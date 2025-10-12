@@ -6,10 +6,17 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  <div className="relative w-full overflow-auto" style={{ width: '100%', overflowX: 'auto', position: 'relative' }}>
     <table
       ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
+      className={cn("w-full caption-bottom text-sm table-fallback", className)}
+      style={{ 
+        width: '100%', 
+        fontSize: '0.875rem',
+        borderCollapse: 'collapse',
+        borderSpacing: 0,
+        tableLayout: 'auto'
+      }}
       {...props}
     />
   </div>
@@ -20,7 +27,12 @@ const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
+  <thead 
+    ref={ref} 
+    className={cn("[&_tr]:border-b", className)} 
+    style={{ borderBottom: '1px solid #e5e7eb' }}
+    {...props} 
+  />
 ))
 TableHeader.displayName = "TableHeader"
 
@@ -61,6 +73,19 @@ const TableRow = React.forwardRef<
       "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
       className
     )}
+    style={{ 
+      borderBottom: '1px solid #f3f4f6',
+      transition: 'background-color 0.2s ease',
+      height: 'auto',
+      minHeight: '60px',
+      display: 'table-row'
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.backgroundColor = '#f9fafb';
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.backgroundColor = 'transparent';
+    }}
     {...props}
   />
 ))
@@ -76,6 +101,15 @@ const TableHead = React.forwardRef<
       "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
       className
     )}
+    style={{
+      height: '3rem',
+      padding: '0 1rem',
+      textAlign: 'left',
+      verticalAlign: 'middle',
+      fontWeight: '500',
+      color: '#6b7280',
+      fontSize: '0.875rem'
+    }}
     {...props}
   />
 ))
@@ -88,6 +122,15 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
+    style={{
+      padding: '1rem',
+      verticalAlign: 'middle',
+      fontSize: '0.875rem',
+      minWidth: 'fit-content',
+      whiteSpace: 'nowrap',
+      overflow: 'visible',
+      textOverflow: 'clip'
+    }}
     {...props}
   />
 ))

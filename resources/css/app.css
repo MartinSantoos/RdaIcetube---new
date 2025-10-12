@@ -5,6 +5,164 @@
 @source '../views';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
+/* Critical table styles - fallback for production */
+.table-fallback {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    table-layout: auto;
+}
+
+.table-fallback thead {
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.table-fallback th,
+.table-fallback td {
+    padding: 1rem;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid #f3f4f6;
+    min-width: fit-content;
+    white-space: nowrap;
+    overflow: visible;
+}
+
+.table-fallback th {
+    font-weight: 500;
+    color: #6b7280;
+    height: 3rem;
+    background-color: #f9fafb;
+}
+
+.table-fallback tbody tr {
+    height: auto;
+    min-height: 60px;
+    display: table-row;
+}
+
+.table-fallback tbody tr:hover {
+    background-color: #f9fafb;
+}
+
+/* Ensure table cells are visible and properly sized */
+.table-fallback td {
+    position: relative;
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Fix for collapsed table cells */
+.table-fallback tbody td:not(:first-child) {
+    display: table-cell !important;
+    width: auto !important;
+}
+
+/* Force table display properties */
+.table-fallback tbody tr {
+    display: table-row !important;
+}
+
+.table-fallback tbody td {
+    display: table-cell !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+    max-height: none !important;
+}
+
+/* Prevent flex/grid interference */
+.table-fallback * {
+    box-sizing: border-box;
+}
+
+/* Ensure text is visible */
+.table-fallback td * {
+    visibility: visible;
+    opacity: 1;
+    display: inline-block;
+}
+
+/* Input field fixes - ensure text is always visible and override dark mode */
+input[type="text"], 
+input[type="password"], 
+input[type="email"], 
+input[data-slot="input"],
+.dark input[type="text"], 
+.dark input[type="password"], 
+.dark input[type="email"], 
+.dark input[data-slot="input"] {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #d1d5db !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+input[type="text"]:focus, 
+input[type="password"]:focus, 
+input[type="email"]:focus, 
+input[data-slot="input"]:focus,
+.dark input[type="text"]:focus, 
+.dark input[type="password"]:focus, 
+.dark input[type="email"]:focus, 
+.dark input[data-slot="input"]:focus {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Placeholder text styling - override dark mode */
+input::placeholder,
+.dark input::placeholder {
+    color: #6b7280 !important;
+    opacity: 1 !important;
+}
+
+/* Ensure form inputs are styled correctly */
+.form-input, 
+[role="textbox"],
+.dark .form-input, 
+.dark [role="textbox"] {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #d1d5db !important;
+}
+
+/* Fix for modal text and labels */
+.modal-content label,
+.modal-content .text-gray-700,
+.modal-content .text-gray-600,
+.dark .modal-content label,
+.dark .modal-content .text-gray-700,
+.dark .modal-content .text-gray-600 {
+    color: #374151 !important;
+}
+
+/* Ensure modal backgrounds are correct */
+.modal-content {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+}
+
+/* Fix for select dropdowns */
+select,
+.dark select {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #d1d5db !important;
+}
+
+/* Fix for radio buttons and checkboxes visibility */
+input[type="radio"],
+input[type="checkbox"],
+.dark input[type="radio"],
+.dark input[type="checkbox"] {
+    background-color: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {

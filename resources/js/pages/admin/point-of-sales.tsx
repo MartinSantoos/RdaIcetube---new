@@ -97,6 +97,10 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const isMobile = useIsMobile();
     
+    // Debug logging - can be removed after fixing
+    console.log('Orders data:', orders);
+    console.log('Orders length:', orders?.length || 0);
+    
     const handleLogout = () => {
         router.post('/logout');
     };
@@ -456,13 +460,6 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                     <div className="flex items-center space-x-2 md:space-x-4">
                         <div className="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold md:hidden">
                             {user.name?.charAt(0) || 'A'}
-                        </div>
-                        <div className="relative hidden md:block">
-                            <input 
-                                type="text" 
-                                placeholder="Search" 
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/30"
-                            />
                         </div>
                     </div>
                 </div>
