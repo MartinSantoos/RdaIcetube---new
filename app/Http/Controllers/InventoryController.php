@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Inventory;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -86,7 +87,7 @@ class InventoryController extends Controller
             $status = 'critical';
         }
 
-        Inventory::create([
+        $inventory = Inventory::create([
             'product_name' => $request->product_name,
             'size' => $request->size,
             'price' => $request->price,
@@ -95,6 +96,23 @@ class InventoryController extends Controller
             'date_created' => Carbon::now()->format('Y-m-d')
             
         ]);
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'inventory_created',
+                "Added new inventory item: {$request->product_name} ({$request->size}) - {$request->quantity} units at ₱{$request->price}",
+                $inventory,
+                [
+                    'product_name' => $request->product_name,
+                    'size' => $request->size,
+                    'price' => $request->price,
+                    'quantity' => $request->quantity,
+                    'status' => $status
+                ],
+                auth()->user()->id
+            );
+        }
 
         return redirect()->back()->with('success', 'Inventory item added successfully!');
     }
@@ -115,6 +133,7 @@ class InventoryController extends Controller
         $inventory = Inventory::where('inventory_id', $inventory_id)->firstOrFail();
         
         $currentStock = $inventory->quantity;
+        $currentPrice = $inventory->price;
         $newQuantity = $currentStock; // Default to current quantity
         
         // Only process quantity change if quantity is provided
@@ -146,6 +165,62 @@ class InventoryController extends Controller
             'price' => $request->price,
             'status' => $status
         ]);
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            $quantityChanged = $newQuantity != $currentStock;
+            $priceChanged = $currentPrice != $request->price;
+            
+            if ($quantityChanged && $priceChanged) {
+                $quantityChange = $newQuantity - $currentStock;
+                $quantityText = $quantityChange > 0 ? "+{$quantityChange}" : "{$quantityChange}";
+                ActivityLog::log(
+                    'inventory_updated',
+                    "Updated {$inventory->product_name} ({$inventory->size}): Stock {$quantityText} ({$currentStock} → {$newQuantity}), Price ₱{$currentPrice} → ₱{$request->price}",
+                    $inventory,
+                    [
+                        'product_name' => $inventory->product_name,
+                        'size' => $inventory->size,
+                        'old_quantity' => $currentStock,
+                        'new_quantity' => $newQuantity,
+                        'old_price' => $currentPrice,
+                        'new_price' => $request->price,
+                        'old_status' => $inventory->getOriginal('status'),
+                        'new_status' => $status
+                    ],
+                    auth()->user()->id
+                );
+            } elseif ($quantityChanged) {
+                $quantityChange = $newQuantity - $currentStock;
+                $quantityText = $quantityChange > 0 ? "+{$quantityChange}" : "{$quantityChange}";
+                ActivityLog::log(
+                    'inventory_stock_updated',
+                    "Updated stock for {$inventory->product_name} ({$inventory->size}): {$quantityText} units ({$currentStock} → {$newQuantity})",
+                    $inventory,
+                    [
+                        'product_name' => $inventory->product_name,
+                        'size' => $inventory->size,
+                        'old_quantity' => $currentStock,
+                        'new_quantity' => $newQuantity,
+                        'quantity_change' => $quantityChange
+                    ],
+                    auth()->user()->id
+                );
+            } elseif ($priceChanged) {
+                ActivityLog::log(
+                    'inventory_price_updated',
+                    "Updated price for {$inventory->product_name} ({$inventory->size}): ₱{$currentPrice} → ₱{$request->price}",
+                    $inventory,
+                    [
+                        'product_name' => $inventory->product_name,
+                        'size' => $inventory->size,
+                        'old_price' => $currentPrice,
+                        'new_price' => $request->price
+                    ],
+                    auth()->user()->id
+                );
+            }
+        }
 
         $quantityChanged = $newQuantity != $currentStock;
         $message = 'Inventory updated successfully!';

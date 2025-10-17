@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Equipment;
 use App\Models\Maintenance;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -35,11 +36,26 @@ class EquipmentController extends Controller
             'equipment_type' => 'required|string|max:255',
         ]);
 
-        Equipment::create([
+        $equipment = Equipment::create([
             'equipment_name' => $request->equipment_name,
             'equipment_type' => $request->equipment_type,
             'status' => 'operational', // Default status
         ]);
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'equipment_created',
+                "Added new equipment: {$request->equipment_name} (Type: {$request->equipment_type})",
+                $equipment,
+                [
+                    'equipment_name' => $request->equipment_name,
+                    'equipment_type' => $request->equipment_type,
+                    'status' => 'operational'
+                ],
+                auth()->user()->id
+            );
+        }
 
         return redirect()->back()->with('success', 'Equipment added successfully!');
     }
@@ -58,7 +74,7 @@ class EquipmentController extends Controller
         ]);
 
         // Create the maintenance record 
-        Maintenance::create([
+        $maintenance = Maintenance::create([
             'equipment_id' => $request->equipment_id,
             'maintenance_type' => $request->maintenance_type,
             'status' => 'scheduled',
@@ -67,10 +83,25 @@ class EquipmentController extends Controller
             'cost' => $request->cost,
         ]);
 
-        
-        Equipment::where('id', $request->equipment_id)->update([
-            'status' => 'under_maintenance'
-        ]);
+        $equipment = Equipment::findOrFail($request->equipment_id);
+        $equipment->update(['status' => 'under_maintenance']);
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'maintenance_scheduled',
+                "Scheduled {$request->maintenance_type} maintenance for {$equipment->equipment_name} on " . date('M j, Y', strtotime($request->maintenance_date)),
+                $equipment,
+                [
+                    'equipment_name' => $equipment->equipment_name,
+                    'maintenance_type' => $request->maintenance_type,
+                    'maintenance_date' => $request->maintenance_date,
+                    'cost' => $request->cost,
+                    'description' => $request->description
+                ],
+                auth()->user()->id
+            );
+        }
 
         return redirect()->back()->with('success', 'Maintenance scheduled successfully!');
     }
@@ -89,6 +120,22 @@ class EquipmentController extends Controller
         Maintenance::where('equipment_id', $id)
             ->whereIn('status', ['scheduled', 'in_progress'])
             ->update(['status' => 'completed']);
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'maintenance_completed',
+                "Completed maintenance for {$equipment->equipment_name} - Equipment back to operational status",
+                $equipment,
+                [
+                    'equipment_name' => $equipment->equipment_name,
+                    'equipment_type' => $equipment->equipment_type,
+                    'previous_status' => 'under_maintenance',
+                    'new_status' => 'operational'
+                ],
+                auth()->user()->id
+            );
+        }
 
         return redirect()->back()->with('success', 'Equipment marked as operational successfully!');
     }

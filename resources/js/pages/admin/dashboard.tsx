@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { BarChart3, Package, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X } from 'lucide-react';
+import { BarChart3, Package, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X, Clock, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import SalesChart from '@/components/SalesChart';
@@ -29,6 +29,16 @@ interface AdminDashboardProps {
         todayTotal: number;
         hourlySales: number[];
     };
+    recentActivities?: Array<{
+        id: number;
+        action: string;
+        description: string;
+        created_at: string;
+        user: {
+            name: string;
+            username: string;
+        };
+    }>;
 }
 
 interface EquipmentStats {
@@ -54,12 +64,15 @@ interface Equipment {
     }>;
 }
 
-export default function AdminDashboard({ user, orderStats, inventoryStats, salesStats }: AdminDashboardProps) {
+export default function AdminDashboard({ user, orderStats, inventoryStats, salesStats, recentActivities }: AdminDashboardProps) {
     const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'thisMonth' | 'thisYear'>('today');
     const [equipmentStats, setEquipmentStats] = useState<EquipmentStats | null>(null);
     const [selectedEquipmentView, setSelectedEquipmentView] = useState<'total' | 'operational' | 'under_maintenance' | 'broken'>('total');
     const [loading, setLoading] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [activityFilter, setActivityFilter] = useState<'recent' | 'today' | 'all'>('recent');
+    const [filteredActivities, setFilteredActivities] = useState(recentActivities || []);
+    const [loadingActivities, setLoadingActivities] = useState(false);
     const isMobile = useIsMobile();
     
 
@@ -104,6 +117,34 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
     const handleLogout = () => {
         router.post('/logout');
     };
+
+    const fetchActivities = async (filter: 'recent' | 'today' | 'all') => {
+        setLoadingActivities(true);
+        try {
+            const response = await fetch(`/api/admin/activities?filter=${filter}`);
+            const data = await response.json();
+            setFilteredActivities(data.activities || []);
+        } catch (error) {
+            console.error('Error fetching activities:', error);
+            setFilteredActivities([]);
+        } finally {
+            setLoadingActivities(false);
+        }
+    };
+
+    const handleActivityFilterChange = (filter: 'recent' | 'today' | 'all') => {
+        setActivityFilter(filter);
+        if (filter === 'recent') {
+            setFilteredActivities(recentActivities || []);
+        } else {
+            fetchActivities(filter);
+        }
+    };
+
+    // Initialize filtered activities when component mounts
+    useEffect(() => {
+        setFilteredActivities(recentActivities || []);
+    }, [recentActivities]);
     
     const getCurrentOrderCount = () => {
         switch (selectedPeriod) {
@@ -151,13 +192,6 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                         </div>
                     </div>
                     <div className="flex items-center space-x-2 md:space-x-4">
-                        <div className="hidden md:block relative">
-                            <input 
-                                type="text" 
-                                placeholder="Search" 
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/30"
-                            />
-                        </div>
                         {isMobile && (
                             <div className="flex items-center space-x-2">
                                 <div className="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">
@@ -417,23 +451,133 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                         </div>
                     </div>
 
-                    {/* Sales Chart */}
-                    <div className="mb-6 md:mb-8">
-                        {salesStats ? (
-                            <SalesChart 
-                                hourlySales={salesStats.hourlySales} 
-                                totalSales={salesStats.todayTotal} 
-                            />
-                        ) : (
-                            <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
-                                <div className="flex items-center justify-center h-64 text-gray-500">
-                                    <div className="text-center">
-                                        <div className="text-lg font-medium mb-2">Sales data not available</div>
-                                        <div className="text-sm">Unable to load today's sales information</div>
+                    {/* Sales Chart and Activity History */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
+                        {/* Sales Chart */}
+                        <div>
+                            {salesStats ? (
+                                <SalesChart 
+                                    hourlySales={salesStats.hourlySales} 
+                                    totalSales={salesStats.todayTotal} 
+                                />
+                            ) : (
+                                <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
+                                    <div className="flex items-center justify-center h-64 text-gray-500">
+                                        <div className="text-center">
+                                            <div className="text-lg font-medium mb-2">Sales data not available</div>
+                                            <div className="text-sm">Unable to load today's sales information</div>
+                                        </div>
                                     </div>
                                 </div>
+                            )}
+                        </div>
+
+                        {/* Activity History */}
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-3">
+                                    <div className="bg-blue-100 p-2 rounded-lg">
+                                        <Clock className="w-5 h-5 text-blue-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base md:text-lg font-semibold text-gray-700">Activity Log</h3>
+                                        <p className="text-xs md:text-sm text-gray-500">Employee actions and order updates</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                    <button
+                                        onClick={() => handleActivityFilterChange('recent')}
+                                        className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                                            activityFilter === 'recent' 
+                                                ? 'bg-blue-600 text-white' 
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        Recent
+                                    </button>
+                                    <button
+                                        onClick={() => handleActivityFilterChange('today')}
+                                        className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                                            activityFilter === 'today' 
+                                                ? 'bg-blue-600 text-white' 
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        Today
+                                    </button>
+                                    <button
+                                        onClick={() => handleActivityFilterChange('all')}
+                                        className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                                            activityFilter === 'all' 
+                                                ? 'bg-blue-600 text-white' 
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        All Time
+                                    </button>
+                                </div>
                             </div>
-                        )}
+                            
+                            <div className="h-64 md:h-80 overflow-y-auto space-y-2">
+                                {loadingActivities ? (
+                                    <div className="h-full flex items-center justify-center text-gray-500">
+                                        <div className="text-center">
+                                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                                            <div className="text-sm">Loading activities...</div>
+                                        </div>
+                                    </div>
+                                ) : filteredActivities && filteredActivities.length > 0 ? (
+                                    filteredActivities.map((activity) => (
+                                        <div key={activity.id} className="flex items-start space-x-3 p-2 bg-gray-50 rounded-lg">
+                                            <div className="bg-white p-1 rounded-full border">
+                                                <User className="w-3 h-3 text-gray-500" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-sm font-medium text-gray-900">
+                                                        {activity.user.name}
+                                                    </p>
+                                                    <div className="text-xs text-gray-500">
+                                                        {activityFilter === 'recent' ? (
+                                                            new Date(activity.created_at).toLocaleTimeString([], {
+                                                                hour: '2-digit',
+                                                                minute: '2-digit'
+                                                            })
+                                                        ) : (
+                                                            <>
+                                                                <div>{new Date(activity.created_at).toLocaleDateString()}</div>
+                                                                <div>{new Date(activity.created_at).toLocaleTimeString([], {
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit'
+                                                                })}</div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 break-words">
+                                                    {activity.description}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="h-full flex items-center justify-center text-gray-500">
+                                        <div className="text-center">
+                                            <div className="text-sm font-medium mb-1">
+                                                {activityFilter === 'recent' ? 'No recent activity' :
+                                                 activityFilter === 'today' ? 'No activity today' :
+                                                 'No activity found'}
+                                            </div>
+                                            <div className="text-xs">
+                                                {activityFilter === 'recent' ? 'Recent actions will appear here' :
+                                                 activityFilter === 'today' ? "Today's actions will appear here" :
+                                                 'All historical actions will appear here'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </main>
             </div>

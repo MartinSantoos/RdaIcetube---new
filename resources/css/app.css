@@ -141,7 +141,7 @@
 }
 
 /* Production consistency fixes */
-/* Ensure consistent font rendering */
+/* Ensure consistent font rendering across browsers */
 * {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -189,19 +189,7 @@ textarea:focus-visible,
     box-sizing: border-box;
 }
 
-/* Production environment fixes */
-/* Force consistent color inheritance */
-.bg-white {
-    background-color: rgb(255 255 255) !important;
-    color: rgb(17 24 39) !important;
-}
-
-.bg-gray-50 {
-    background-color: rgb(249 250 251) !important;
-    color: rgb(17 24 39) !important;
-}
-
-/* Ensure blue backgrounds have white text */
+/* Deployment-safe color consistency (minimal overrides) */
 .bg-blue-600,
 .bg-blue-700,
 .bg-blue-500 {
@@ -214,32 +202,35 @@ nav[role="navigation"] {
     font-weight: 500;
 }
 
-/* Ensure consistent text colors in production */
-.text-gray-900 {
-    color: rgb(17 24 39) !important;
+/* Cross-browser font fallbacks */
+@supports not (font-family: 'Instrument Sans') {
+    * {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    }
 }
 
-.text-gray-700 {
-    color: rgb(55 65 81) !important;
+/* Prevent layout shift on font load */
+.font-loading {
+    font-display: swap;
 }
 
-.text-gray-600 {
-    color: rgb(75 85 99) !important;
+/* Ensure consistent button appearance across browsers */
+button[type="submit"],
+button[type="button"],
+input[type="submit"],
+input[type="button"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
 }
 
-.text-gray-500 {
-    color: rgb(107 114 128) !important;
-}
-
-.text-white {
-    color: rgb(255 255 255) !important;
-}
-
-/* Consistent border colors */
-.border-gray-200 {
-    border-color: rgb(229 231 235) !important;
-}
-
-.border-gray-300 {
-    border-color: rgb(209 213 219) !important;
+/* Mobile touch target consistency */
+@media (max-width: 768px) {
+    button, 
+    input[type="button"], 
+    input[type="submit"],
+    .btn {
+        min-height: 44px;
+        min-width: 44px;
+    }
 }

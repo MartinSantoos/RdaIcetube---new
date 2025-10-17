@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Hash;
@@ -56,7 +57,7 @@ class EmployeeController extends Controller
         // Determine user type based on position
         $userType = strtolower($request->position) === 'admin' ? 1 : 2;
 
-        User::create([
+        $employee = User::create([
             'name' => $request->name,
             'username' => $username,
             'email' => null, // Email is nullable for employees
@@ -67,6 +68,24 @@ class EmployeeController extends Controller
             'status' => $request->status,
         ]);
 
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'employee_created',
+                "Added new employee: {$request->name} (Position: {$request->position}, Username: {$username})",
+                $employee,
+                [
+                    'name' => $request->name,
+                    'username' => $username,
+                    'position' => $request->position,
+                    'contact' => $request->contact,
+                    'status' => $request->status,
+                    'user_type' => $userType
+                ],
+                auth()->user()->id
+            );
+        }
+
         return redirect()->back()->with('success', 'Employee added successfully! Username: ' . $username . ', Password: ' . $password);
     }
 
@@ -76,6 +95,9 @@ class EmployeeController extends Controller
     public function update(Request $request, $id)
     {
         $employee = User::whereIn('user_type', [1, 2])->findOrFail($id);
+
+        // Store original values for comparison
+        $originalData = $employee->only(['name', 'contact_number', 'position', 'status', 'user_type']);
 
         $request->validate([
             'name' => 'required|string|max:255',
@@ -100,6 +122,30 @@ class EmployeeController extends Controller
 
         $employee->update($updateData);
 
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            $changes = [];
+            if ($originalData['name'] !== $request->name) $changes[] = "Name: {$originalData['name']} → {$request->name}";
+            if ($originalData['position'] !== $request->position) $changes[] = "Position: {$originalData['position']} → {$request->position}";
+            if ($originalData['contact_number'] !== $request->contact) $changes[] = "Contact: {$originalData['contact_number']} → {$request->contact}";
+            if ($originalData['status'] !== $request->status) $changes[] = "Status: {$originalData['status']} → {$request->status}";
+            
+            if (!empty($changes)) {
+                $changeText = implode(', ', $changes);
+                ActivityLog::log(
+                    'employee_updated',
+                    "Updated employee {$employee->name} ({$employee->username}): {$changeText}",
+                    $employee,
+                    [
+                        'original_data' => $originalData,
+                        'new_data' => $updateData,
+                        'changes' => $changes
+                    ],
+                    auth()->user()->id
+                );
+            }
+        }
+
         return redirect()->back()->with('success', 'Employee updated successfully!');
     }
 
@@ -121,6 +167,22 @@ class EmployeeController extends Controller
     {
         $employee = User::activeEmployees()->findOrFail($id);
         $employee->delete(); // This will now use soft delete (archived_at)
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'employee_archived',
+                "Archived employee: {$employee->name} ({$employee->username}) - Position: {$employee->position}",
+                $employee,
+                [
+                    'name' => $employee->name,
+                    'username' => $employee->username,
+                    'position' => $employee->position,
+                    'contact' => $employee->contact_number
+                ],
+                auth()->user()->id
+            );
+        }
 
         return redirect()->back()->with('success', 'Employee archived successfully!');
     }
@@ -146,6 +208,22 @@ class EmployeeController extends Controller
         $employee = User::archivedEmployees()->findOrFail($id);
         $employee->restore();
 
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'employee_restored',
+                "Restored employee: {$employee->name} ({$employee->username}) - Position: {$employee->position}",
+                $employee,
+                [
+                    'name' => $employee->name,
+                    'username' => $employee->username,
+                    'position' => $employee->position,
+                    'contact' => $employee->contact_number
+                ],
+                auth()->user()->id
+            );
+        }
+
         return redirect()->back()->with('success', 'Employee restored successfully!');
     }
 
@@ -166,9 +244,28 @@ class EmployeeController extends Controller
     public function toggleStatus($id)
     {
         $employee = User::activeEmployees()->findOrFail($id);
+        $oldStatus = $employee->status;
         $newStatus = $employee->status === 'active' ? 'inactive' : 'active';
         
         $employee->update(['status' => $newStatus]);
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            $action = $newStatus === 'active' ? 'enabled' : 'disabled';
+            ActivityLog::log(
+                'employee_status_toggled',
+                "Changed employee status for {$employee->name} ({$employee->username}): {$oldStatus} → {$newStatus}",
+                $employee,
+                [
+                    'name' => $employee->name,
+                    'username' => $employee->username,
+                    'old_status' => $oldStatus,
+                    'new_status' => $newStatus,
+                    'action' => $action
+                ],
+                auth()->user()->id
+            );
+        }
 
         $action = $newStatus === 'active' ? 'enabled' : 'disabled';
         return redirect()->back()->with('success', 'Employee ' . $action . ' successfully!');

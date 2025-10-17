@@ -58,6 +58,18 @@ interface Order {
     delivery_date: string;
     price: number;
     total: number;
+    delivery_photo?: string;
+    delivery_rider_id?: number;
+    deliveryRider?: {
+        id: number;
+        name: string;
+        position?: string;
+    };
+    delivery_rider?: {
+        id: number;
+        name: string;
+        position?: string;
+    };
 }
 
 interface DeliveryRider {
@@ -96,10 +108,6 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     const [dateToFilter, setDateToFilter] = useState('');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const isMobile = useIsMobile();
-    
-    // Debug logging - can be removed after fixing
-    console.log('Orders data:', orders);
-    console.log('Orders length:', orders?.length || 0);
     
     const handleLogout = () => {
         router.post('/logout');
@@ -805,6 +813,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                 <TableHead className="font-semibold">Quantity</TableHead>
                                                 <TableHead className="font-semibold">Delivery Mode</TableHead>
                                                 <TableHead className="font-semibold">Order Date</TableHead>
+                                                <TableHead className="font-semibold">Delivery Date</TableHead>
                                                 <TableHead className="font-semibold">Total</TableHead>
                                                 <TableHead className="font-semibold">Actions</TableHead>
                                             </TableRow>
@@ -823,7 +832,8 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                         <TableCell>{order.quantity}</TableCell>
                                                         <TableCell className="capitalize">{order.delivery_mode.replace('_', ' ')}</TableCell>
                                                         <TableCell>{formatDate(order.order_date)}</TableCell>
-                                                        <TableCell className="font-medium">₱{order.total.toFixed(2)}</TableCell>
+                                                        <TableCell>{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</TableCell>
+                                                        <TableCell className="font-medium">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</TableCell>
                                                         <TableCell>
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
@@ -891,6 +901,13 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                     )}
                                                                     {(order.status === 'completed' || order.status === 'cancelled') && (
                                                                         <>
+                                                                            <DropdownMenuItem
+                                                                                onClick={() => handleViewOrderDetails(order)}
+                                                                                className="cursor-pointer"
+                                                                            >
+                                                                                <Eye className="h-4 w-4 mr-2 text-blue-600" />
+                                                                                View Details
+                                                                            </DropdownMenuItem>
                                                                             <DropdownMenuItem 
                                                                                 className="cursor-pointer"
                                                                                 onClick={() => handleViewReceipt(order)}
@@ -914,7 +931,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                 ))
                                             ) : (
                                                 <TableRow>
-                                                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                                                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                                                         No orders found matching the current filters.
                                                     </TableCell>
                                                 </TableRow>
@@ -1044,6 +1061,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                         <TableHead className="font-semibold">Quantity</TableHead>
                                                         <TableHead className="font-semibold">Delivery Mode</TableHead>
                                                         <TableHead className="font-semibold">Order Date</TableHead>
+                                                        <TableHead className="font-semibold">Delivery Date</TableHead>
                                                         <TableHead className="font-semibold">Total</TableHead>
                                                         <TableHead className="font-semibold">Actions</TableHead>
                                                     </TableRow>
@@ -1061,7 +1079,8 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                             <TableCell className="text-gray-600">{order.quantity}</TableCell>
                                                             <TableCell className="capitalize text-gray-600">{order.delivery_mode.replace('_', ' ')}</TableCell>
                                                             <TableCell className="text-gray-600">{formatDate(order.order_date)}</TableCell>
-                                                            <TableCell className="font-medium text-gray-600">₱{order.total.toFixed(2)}</TableCell>
+                                                            <TableCell className="text-gray-600">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</TableCell>
+                                                            <TableCell className="font-medium text-gray-600">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</TableCell>
                                                             <TableCell>
                                                                 <DropdownMenu>
                                                                     <DropdownMenuTrigger asChild>
@@ -1519,9 +1538,22 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         <p className="font-semibold text-sm">{formatDate(selectedOrder.order_date)}</p>
                                     </div>
                                     <div>
-                                        <span className="text-xs text-gray-500">Total</span>
-                                        <p className="font-semibold text-base">₱{selectedOrder.total.toFixed(2)}</p>
+                                        <span className="text-xs text-gray-500">Delivery Date</span>
+                                        <p className="font-semibold text-sm">{selectedOrder.delivery_date ? formatDate(selectedOrder.delivery_date) : 'N/A'}</p>
                                     </div>
+                                    <div>
+                                        <span className="text-xs text-gray-500">Total</span>
+                                        <p className="font-semibold text-base">₱{selectedOrder.total ? parseFloat(selectedOrder.total.toString()).toFixed(2) : '0.00'}</p>
+                                    </div>
+                                    {/* Show delivery employee info for delivery orders */}
+                                    {selectedOrder.delivery_mode === 'deliver' && (selectedOrder.deliveryRider || selectedOrder.delivery_rider) && (
+                                        <div>
+                                            <span className="text-xs text-gray-500">Delivery Employee</span>
+                                            <p className="font-semibold text-sm">
+                                                {selectedOrder.deliveryRider?.name || selectedOrder.delivery_rider?.name || 'Unknown'}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -1544,24 +1576,32 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                     {/* Dotted Line */}
                                     <div className="flex-1 border-t-2 border-dotted border-gray-300 mx-1"></div>
 
-                                    {/* Package on Delivery */}
+                                    {/* Package on Delivery / Ready for Pickup */}
                                     <div className="flex flex-col items-center text-center">
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
                                             selectedOrder.status === 'out_for_delivery' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-400'
                                         }`}>
-                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                                <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/>
-                                                <path d="M3 4a1 1 0 011-1h1a1 1 0 011 1v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM7.268 3.092a1 1 0 011.464 0l2.268 2.268a1 1 0 010 1.414L8.732 9.042a1 1 0 01-1.464 0L5 6.774a1 1 0 010-1.414l2.268-2.268z"/>
-                                            </svg>
+                                            {selectedOrder.delivery_mode === 'pick_up' ? (
+                                                <Package className="w-4 h-4" />
+                                            ) : (
+                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/>
+                                                    <path d="M3 4a1 1 0 011-1h1a1 1 0 011 1v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM7.268 3.092a1 1 0 011.464 0l2.268 2.268a1 1 0 010 1.414L8.732 9.042a1 1 0 01-1.464 0L5 6.774a1 1 0 010-1.414l2.268-2.268z"/>
+                                                </svg>
+                                            )}
                                         </div>
-                                        <p className="text-xs font-medium">Package</p>
-                                        <p className="text-xs text-gray-500">On Delivery</p>
+                                        <p className="text-xs font-medium">
+                                            {selectedOrder.delivery_mode === 'pick_up' ? 'Ready for' : 'Package'}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            {selectedOrder.delivery_mode === 'pick_up' ? 'Pickup' : 'On Delivery'}
+                                        </p>
                                     </div>
 
                                     {/* Dotted Line */}
                                     <div className="flex-1 border-t-2 border-dotted border-gray-300 mx-1"></div>
 
-                                    {/* Package Delivered */}
+                                    {/* Package Delivered / Picked Up */}
                                     <div className="flex flex-col items-center text-center">
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
                                             selectedOrder.status === 'completed' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
@@ -1569,7 +1609,9 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                             <Check className="w-4 h-4" />
                                         </div>
                                         <p className="text-xs font-medium">Package</p>
-                                        <p className="text-xs text-gray-500">Delivered</p>
+                                        <p className="text-xs text-gray-500">
+                                            {selectedOrder.delivery_mode === 'pick_up' ? 'Picked Up' : 'Delivered'}
+                                        </p>
                                     </div>
                                 </div>
 
@@ -1580,6 +1622,28 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                     </p>
                                 </div>
                             </div>
+
+                            {/* Delivery Photo Section */}
+                            {selectedOrder.delivery_photo && (
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                    <h3 className="text-base font-semibold mb-2 text-center text-green-600">Delivery Confirmation</h3>
+                                    <div className="text-center">
+                                        <img 
+                                            src={`/storage/${selectedOrder.delivery_photo}`}
+                                            alt="Delivery confirmation photo"
+                                            className="max-w-full h-48 object-cover mx-auto rounded-lg shadow-md"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Photo taken at delivery completion
+                                        </p>
+                                        {(selectedOrder.deliveryRider || selectedOrder.delivery_rider) && (
+                                            <p className="text-xs text-green-600 font-medium mt-1">
+                                                Delivered by: {selectedOrder.deliveryRider?.name || selectedOrder.delivery_rider?.name}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Action Buttons */}
                             <div className="flex justify-center space-x-2 pt-1">
@@ -1592,17 +1656,20 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                 </Button>
                                 {selectedOrder.status === 'pending' && (
                                     <>
-                                        <Button
-                                            onClick={() => {
-                                                handleStatusUpdate(selectedOrder.order_id, 'out_for_delivery');
-                                                setIsOrderDetailsModalOpen(false);
-                                            }}
-                                            className="bg-blue-600 hover:bg-blue-700 text-white"
-                                            size="sm"
-                                        >
-                                            <Truck className="h-4 w-4 mr-2" />
-                                            Mark as On Delivery
-                                        </Button>
+                                        {/* Only show "Mark as On Delivery" for delivery orders, not pick-up */}
+                                        {selectedOrder.delivery_mode === 'deliver' && (
+                                            <Button
+                                                onClick={() => {
+                                                    handleStatusUpdate(selectedOrder.order_id, 'out_for_delivery');
+                                                    setIsOrderDetailsModalOpen(false);
+                                                }}
+                                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                                                size="sm"
+                                            >
+                                                <Truck className="h-4 w-4 mr-2" />
+                                                Mark as On Delivery
+                                            </Button>
+                                        )}
                                         <Button
                                             onClick={() => {
                                                 handleStatusUpdate(selectedOrder.order_id, 'completed');
@@ -1612,7 +1679,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                             size="sm"
                                         >
                                             <Check className="h-4 w-4 mr-2" />
-                                            Mark as Completed
+                                            {selectedOrder.delivery_mode === 'pick_up' ? 'Mark as Completed' : 'Mark as Completed'}
                                         </Button>
                                     </>
                                 )}

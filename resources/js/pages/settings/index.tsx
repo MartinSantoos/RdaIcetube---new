@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { BarChart3, Package, Settings, ShoppingCart, Users, LogOut, User, Lock, Phone, MapPin, UserCircle, Menu, X } from 'lucide-react';
+import { BarChart3, Package, Settings, ShoppingCart, Users, LogOut, User, Lock, Phone, MapPin, UserCircle, Menu, X, Monitor } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -229,6 +229,20 @@ export default function SettingsPage({ user }: SettingsProps) {
                                             <Phone className="w-4 h-4 text-gray-400" />
                                             <span>{user.contact_number || 'No contact number'}</span>
                                         </div>
+                                        
+                                        {/* Product Monitoring Button - Only for Admin */}
+                                        {user.user_type === 1 && (
+                                            <div className="pt-2">
+                                                <Button
+                                                    onClick={() => window.open('/admin/product-monitoring', '_blank')}
+                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                                    size="sm"
+                                                >
+                                                    <Monitor className="w-4 h-4 mr-2" />
+                                                    Product Monitoring
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

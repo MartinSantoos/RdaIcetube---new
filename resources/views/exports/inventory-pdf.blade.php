@@ -173,11 +173,11 @@
                     <td>{{ $item->inventory_id }}</td>
                     <td>{{ $item->product_name }}</td>
                     <td>{{ $item->size }}</td>
-                    <td class="text-right">₱{{ $item->price ? number_format((float)$item->price, 2) : '0.00' }}</td>
+                    <td class="text-right">PHP{{ $item->price ? number_format((float)$item->price, 2) : '0.00' }}</td>
                     <td class="text-center {{ $item->quantity < 10 ? 'low-stock' : '' }}">
                         {{ $item->quantity }}
                     </td>
-                    <td class="text-right">₱{{ ($item->price && $item->quantity) ? number_format((float)$item->price * (int)$item->quantity, 2) : '0.00' }}</td>
+                    <td class="text-right">PHP{{ ($item->price && $item->quantity) ? number_format((float)$item->price * (int)$item->quantity, 2) : '0.00' }}</td>
                     <td class="text-center">
                         <span class="status {{ $item->status === 'active' ? 'status-active' : 'status-inactive' }}">
                             {{ ucfirst($item->status) }}

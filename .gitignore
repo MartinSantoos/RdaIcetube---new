@@ -19,6 +19,13 @@ Homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
+
+# Development/Debug files (exclude from repository)
+check_*.php
+test_*.php
+fix_*.php
+debug_*.php
+tinker_*.php
 /auth.json
 /.fleet
 /.idea

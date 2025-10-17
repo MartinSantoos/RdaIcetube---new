@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
-import { Package, ShoppingCart, User, LogOut, Eye, Check, Truck, Search, Filter, Calendar, MoreHorizontal, Menu, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import { Package, ShoppingCart, User, LogOut, Eye, Check, Truck, Search, Filter, Calendar, MoreHorizontal, Menu, X, Camera, Upload, Plus } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -38,20 +40,55 @@ interface Order {
     total: number;
     delivery_rider_id?: number;
     deliveryRider?: User;
+    delivery_photo?: string;
+}
+
+interface InventoryItem {
+    size: string;
+    price: number;
+    status: string;
+    quantity: number;
 }
 
 interface EmployeeOrdersProps {
     user: User;
     orders: Order[];
+    inventory: InventoryItem[];
 }
 
-export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
+export default function EmployeeOrders({ user, orders, inventory = [] }: EmployeeOrdersProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [isOrderDetailsModalOpen, setIsOrderDetailsModalOpen] = useState(false);
+    const [isPhotoUploadModalOpen, setIsPhotoUploadModalOpen] = useState(false);
+    const [isCreateOrderModalOpen, setIsCreateOrderModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const isMobile = useIsMobile();
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [orderToComplete, setOrderToComplete] = useState<Order | null>(null);
+    const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+    const [showSuccess, setShowSuccess] = useState(false);
+
+    // Get today's date in YYYY-MM-DD format
+    const getTodayDate = () => {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    };
+
+    const { data, setData, post, processing, errors, reset } = useForm({
+        customer_name: '',
+        address: '',
+        contact_number: '',
+        quantity: '',
+        size: '',
+        order_date: getTodayDate(),
+        delivery_date: '',
+        delivery_mode: 'deliver', // Default to deliver for employees
+        delivery_rider_id: user.id.toString(), // Set current employee as delivery rider
+    });
 
     const handleLogout = () => {
         router.post('/logout');
@@ -83,6 +120,8 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
             return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">● On Delivery</Badge>;
         } else if (status === 'completed') {
             return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">● Completed</Badge>;
+        } else if (status === 'cancelled') {
+            return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">● Cancelled</Badge>;
         }
         return <Badge variant="outline">{status}</Badge>;
     };
@@ -90,6 +129,66 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
     const handleViewOrderDetails = (order: Order) => {
         setSelectedOrder(order);
         setIsOrderDetailsModalOpen(true);
+    };
+
+    const handleCompleteOrder = (order: Order) => {
+        setOrderToComplete(order);
+        setIsPhotoUploadModalOpen(true);
+    };
+
+    const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            setSelectedPhoto(file);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setPhotoPreview(e.target?.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handlePhotoUpload = async () => {
+        if (!selectedPhoto || !orderToComplete) return;
+
+        setIsUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('delivery_photo', selectedPhoto);
+
+            const response = await fetch(`/employee/orders/${orderToComplete.order_id}/complete-with-photo`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+            });
+
+            if (response.ok) {
+                // Reset modal state
+                setIsPhotoUploadModalOpen(false);
+                setSelectedPhoto(null);
+                setPhotoPreview(null);
+                setOrderToComplete(null);
+                
+                // Refresh the page to see updated order status
+                router.reload();
+            } else {
+                alert('Failed to upload photo and complete order. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error uploading photo:', error);
+            alert('An error occurred while uploading the photo. Please try again.');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const closePhotoModal = () => {
+        setIsPhotoUploadModalOpen(false);
+        setSelectedPhoto(null);
+        setPhotoPreview(null);
+        setOrderToComplete(null);
     };
 
     const handleStatusUpdate = async (orderId: string, newStatus: string) => {
@@ -101,6 +200,138 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
             console.error('Failed to update status:', error);
         }
     };
+
+    // Available items calculation
+    const availableItems = useMemo(() => {
+        try {
+            if (!inventory || !Array.isArray(inventory)) {
+                console.warn('Inventory is not available or not an array:', inventory);
+                return [];
+            }
+            
+            if (!data.quantity || data.quantity === '') {
+                return inventory.filter(item => item && item.status === 'available' && item.quantity > 0) || [];
+            }
+            
+            const requestedQuantity = parseInt(data.quantity);
+            if (isNaN(requestedQuantity) || requestedQuantity <= 0) return [];
+            
+            const filtered = inventory.filter(item => {
+                return item && 
+                       item.status === 'available' && 
+                       item.quantity > 0 && 
+                       item.quantity >= requestedQuantity;
+            }) || [];
+            
+            return filtered;
+        } catch (error) {
+            console.error('Error in availableItems calculation:', error);
+            return [];
+        }
+    }, [inventory, data.quantity]);
+
+    // Form validation
+    const validateForm = () => {
+        const errors: Record<string, string> = {};
+        
+        if (!data.customer_name.trim()) {
+            errors.customer_name = 'Customer name is required';
+        }
+        
+        if (!data.address.trim()) {
+            errors.address = 'Address is required';
+        }
+        
+        if (!data.contact_number.trim()) {
+            errors.contact_number = 'Contact number is required';
+        } else if (!/^[0-9]{11}$/.test(data.contact_number.trim())) {
+            errors.contact_number = 'Contact number must be exactly 11 digits';
+        }
+        
+        if (!data.quantity.trim()) {
+            errors.quantity = 'Quantity is required';
+        } else if (isNaN(Number(data.quantity)) || Number(data.quantity) < 1) {
+            errors.quantity = 'Quantity must be a positive number';
+        }
+        
+        if (!data.size.trim()) {
+            errors.size = 'Size is required';
+        }
+        
+        if (!data.order_date.trim()) {
+            errors.order_date = 'Order date is required';
+        }
+        
+        if (!data.delivery_date.trim()) {
+            errors.delivery_date = 'Delivery date is required';
+        } else {
+            const today = new Date(getTodayDate());
+            const deliveryDate = new Date(data.delivery_date);
+            
+            if (deliveryDate < today) {
+                errors.delivery_date = 'Delivery date cannot be in the past';
+            } else if (deliveryDate.getTime() === today.getTime()) {
+                errors.delivery_date = 'Delivery date must be after today';
+            }
+        }
+        
+        return errors;
+    };
+
+    // Form submission
+    const handleCreateOrderSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        
+        setValidationErrors({});
+        
+        const errors = validateForm();
+        
+        if (Object.keys(errors).length > 0) {
+            setValidationErrors(errors);
+            return;
+        }
+        
+        post('/employee/orders', {
+            onSuccess: () => {
+                reset();
+                setValidationErrors({});
+                setShowSuccess(true);
+                setIsCreateOrderModalOpen(false);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 3000);
+            },
+            onError: (errors) => {
+                setValidationErrors(errors);
+            }
+        });
+    };
+
+    // Effects
+    useEffect(() => {
+        if (data.delivery_mode === 'pick_up') {
+            setData('delivery_rider_id', '');
+        } else {
+            setData('delivery_rider_id', user.id.toString());
+        }
+    }, [data.delivery_mode, user.id]);
+
+    useEffect(() => {
+        if (isCreateOrderModalOpen) {
+            setData('order_date', getTodayDate());
+            setData('delivery_rider_id', user.id.toString());
+        }
+    }, [isCreateOrderModalOpen, user.id]);
+
+    useEffect(() => {
+        if (showSuccess) {
+            const timer = setTimeout(() => {
+                setShowSuccess(false);
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [showSuccess]);
 
     // Filter orders based on search term and status
     const filteredOrders = orders.filter(order => {
@@ -238,7 +469,7 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                         onClick={() => setSidebarOpen(false)}
                                     >
                                         <ShoppingCart className="w-5 h-5" />
-                                        <span>My Orders</span>
+                                        <span>Orders</span>
                                     </Link>
                                 </nav>
                             </div>
@@ -279,6 +510,14 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                 <h1 className="text-2xl md:text-3xl font-bold mb-2">My Orders</h1>
                                 <p className="text-blue-100 text-sm md:text-base">Manage orders assigned to you</p>
                             </div>
+                            <Button
+                                onClick={() => setIsCreateOrderModalOpen(true)}
+                                className="bg-white text-blue-600 hover:bg-blue-50 font-medium px-4 py-2 md:px-6 md:py-3"
+                            >
+                                <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2" />
+                                <span className="hidden md:inline">Create Order</span>
+                                <span className="md:hidden">Create</span>
+                            </Button>
                         </div>
                     </div>
 
@@ -381,6 +620,7 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                             <TableHead>Quantity</TableHead>
                                             <TableHead>Delivery Mode</TableHead>
                                             <TableHead>Order Date</TableHead>
+                                            <TableHead>Delivery Date</TableHead>
                                             <TableHead>Total</TableHead>
                                             <TableHead>Actions</TableHead>
                                         </TableRow>
@@ -388,7 +628,7 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                     <TableBody>
                                         {filteredOrders.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                                                <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                                                     {searchTerm || statusFilter !== 'all' ? 'No orders found matching your filters' : 'No orders assigned to you'}
                                                 </TableCell>
                                             </TableRow>
@@ -404,12 +644,13 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                                     <TableCell>{order.size}</TableCell>
                                                     <TableCell>{order.quantity}</TableCell>
                                                     <TableCell>
-                                                        <Badge variant="outline">
+                                                        <span className="capitalize">
                                                             {order.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}
-                                                        </Badge>
+                                                        </span>
                                                     </TableCell>
                                                     <TableCell>{formatDate(order.order_date)}</TableCell>
-                                                    <TableCell className="font-semibold">₱{order.total.toFixed(2)}</TableCell>
+                                                    <TableCell>{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</TableCell>
+                                                    <TableCell className="font-semibold">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</TableCell>
                                                     <TableCell>
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
@@ -438,7 +679,7 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                                                 )}
                                                                 {order.status === 'out_for_delivery' && (
                                                                     <DropdownMenuItem 
-                                                                        onClick={() => handleStatusUpdate(order.order_id, 'completed')}
+                                                                        onClick={() => handleCompleteOrder(order)}
                                                                         className="text-green-600"
                                                                     >
                                                                         <Check className="mr-2 h-4 w-4" />
@@ -484,17 +725,21 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                                 </div>
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">Delivery:</span>
-                                                    <Badge variant="outline">
+                                                    <span className="font-medium capitalize">
                                                         {order.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}
-                                                    </Badge>
+                                                    </span>
                                                 </div>
                                                 <div className="flex justify-between">
-                                                    <span className="text-gray-600">Date:</span>
+                                                    <span className="text-gray-600">Order Date:</span>
                                                     <span className="font-medium">{formatDate(order.order_date)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Delivery Date:</span>
+                                                    <span className="font-medium">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</span>
                                                 </div>
                                                 <div className="flex justify-between items-center pt-2 border-t">
                                                     <span className="text-gray-600">Total:</span>
-                                                    <span className="font-bold text-lg">₱{order.total.toFixed(2)}</span>
+                                                    <span className="font-bold text-lg">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</span>
                                                 </div>
                                             </div>
                                             
@@ -523,7 +768,7 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                                     <Button 
                                                         variant="default" 
                                                         size="sm"
-                                                        onClick={() => handleStatusUpdate(order.order_id, 'completed')}
+                                                        onClick={() => handleCompleteOrder(order)}
                                                         className="flex-1 bg-green-600 hover:bg-green-700"
                                                     >
                                                         <Check className="mr-2 h-4 w-4" />
@@ -586,8 +831,12 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                         <p className="font-semibold text-sm">{formatDate(selectedOrder.order_date)}</p>
                                     </div>
                                     <div>
+                                        <span className="text-xs text-gray-500">Delivery Date</span>
+                                        <p className="font-semibold text-sm">{selectedOrder.delivery_date ? formatDate(selectedOrder.delivery_date) : 'N/A'}</p>
+                                    </div>
+                                    <div>
                                         <span className="text-xs text-gray-500">Total</span>
-                                        <p className="font-semibold text-base">₱{selectedOrder.total.toFixed(2)}</p>
+                                        <p className="font-semibold text-base">₱{selectedOrder.total ? parseFloat(selectedOrder.total.toString()).toFixed(2) : '0.00'}</p>
                                     </div>
                                 </div>
                             </div>
@@ -645,6 +894,23 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                 </div>
                             </div>
 
+                            {/* Delivery Photo Section */}
+                            {selectedOrder.delivery_photo && (
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                    <h3 className="text-base font-semibold mb-2 text-center text-green-600">Delivery Confirmation</h3>
+                                    <div className="text-center">
+                                        <img 
+                                            src={`/storage/${selectedOrder.delivery_photo}`}
+                                            alt="Delivery confirmation photo"
+                                            className="max-w-full h-48 object-cover mx-auto rounded-lg shadow-md"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Photo taken at delivery completion
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Action Buttons */}
                             <div className="flex justify-center space-x-2 pt-1">
                                 <Button
@@ -667,24 +933,452 @@ export default function EmployeeOrders({ user, orders }: EmployeeOrdersProps) {
                                         Start Delivery
                                     </Button>
                                 )}
-                                {selectedOrder.status === 'out_for_delivery' && (
-                                    <Button
-                                        onClick={() => {
-                                            handleStatusUpdate(selectedOrder.order_id, 'completed');
-                                            setIsOrderDetailsModalOpen(false);
-                                        }}
-                                        className="bg-green-600 hover:bg-green-700 text-white"
-                                        size="sm"
-                                    >
-                                        <Check className="h-4 w-4 mr-2" />
-                                        Mark as Delivered
-                                    </Button>
-                                )}
                             </div>
                         </div>
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* Photo Upload Modal */}
+            <Dialog open={isPhotoUploadModalOpen} onOpenChange={setIsPhotoUploadModalOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-semibold flex items-center">
+                            <Camera className="mr-2 h-5 w-5" />
+                            Complete Delivery
+                        </DialogTitle>
+                    </DialogHeader>
+                    
+                    {orderToComplete && (
+                        <div className="space-y-4">
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                                <p className="text-sm text-gray-600">Order ID:</p>
+                                <p className="font-semibold">#{orderToComplete.order_id}</p>
+                                <p className="text-sm text-gray-600 mt-1">Customer:</p>
+                                <p className="font-semibold">{orderToComplete.customer_name}</p>
+                            </div>
+
+                            <div className="text-center">
+                                <p className="text-sm text-gray-600 mb-3">
+                                    Please take a photo of the delivered product to complete this order
+                                </p>
+                                
+                                {/* Photo Upload Area */}
+                                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-400 transition-colors">
+                                    {photoPreview ? (
+                                        <div className="space-y-3">
+                                            <img 
+                                                src={photoPreview} 
+                                                alt="Delivery photo preview" 
+                                                className="max-w-full h-32 object-cover mx-auto rounded-lg"
+                                            />
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setSelectedPhoto(null);
+                                                    setPhotoPreview(null);
+                                                }}
+                                            >
+                                                <X className="mr-2 h-4 w-4" />
+                                                Remove Photo
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center">
+                                            <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
+                                            <p className="text-sm text-gray-600 mb-2">
+                                                Click to select a photo or take a picture
+                                            </p>
+                                            <Label 
+                                                htmlFor="photo-upload" 
+                                                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors"
+                                            >
+                                                <Camera className="mr-2 h-4 w-4" />
+                                                Take Photo
+                                            </Label>
+                                            <Input
+                                                id="photo-upload"
+                                                type="file"
+                                                accept="image/*"
+                                                capture="environment"
+                                                onChange={handlePhotoChange}
+                                                className="hidden"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Modal Actions */}
+                            <div className="flex gap-2 pt-4">
+                                <Button
+                                    variant="outline"
+                                    onClick={closePhotoModal}
+                                    className="flex-1"
+                                    disabled={isUploading}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={handlePhotoUpload}
+                                    disabled={!selectedPhoto || isUploading}
+                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                                >
+                                    {isUploading ? (
+                                        <>
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                            Uploading...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Check className="mr-2 h-4 w-4" />
+                                            Complete Order
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Create Order Modal */}
+            <Dialog open={isCreateOrderModalOpen} onOpenChange={setIsCreateOrderModalOpen}>
+                <DialogContent className="!max-w-[1400px] !w-[98vw] max-h-[95vh] overflow-y-auto p-8">
+                    <DialogHeader className="mb-6">
+                        <DialogTitle className="text-3xl font-bold">Create New Order</DialogTitle>
+                    </DialogHeader>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Order Form */}
+                        <div className="lg:col-span-2">
+                            {/* Display server-side errors */}
+                            {Object.keys(errors).length > 0 && (
+                                <Alert className="mb-6 border-red-200 bg-red-50">
+                                    <AlertDescription className="text-red-800">
+                                        <strong>Please fix the following errors:</strong>
+                                        <ul className="mt-2 list-disc list-inside">
+                                            {Object.entries(errors).map(([field, error]) => (
+                                                <li key={field}>{Array.isArray(error) ? error[0] : error}</li>
+                                            ))}
+                                        </ul>
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+                            
+                            <form onSubmit={handleCreateOrderSubmit} className="space-y-6">
+                                {/* Customer Name */}
+                                <div className="space-y-3">
+                                    <Label htmlFor="customer_name" className="text-base font-medium">Customer Name</Label>
+                                    <Input
+                                        id="customer_name"
+                                        type="text"
+                                        placeholder="Enter customer name"
+                                        value={data.customer_name}
+                                        onChange={(e) => setData('customer_name', e.target.value)}
+                                        className={`w-full h-12 text-base ${validationErrors.customer_name || errors.customer_name ? 'border-red-500' : ''}`}
+                                    />
+                                    {(validationErrors.customer_name || errors.customer_name) && (
+                                        <p className="text-sm text-red-600">
+                                            {validationErrors.customer_name || (Array.isArray(errors.customer_name) ? errors.customer_name[0] : errors.customer_name)}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Address */}
+                                <div className="space-y-3">
+                                    <Label htmlFor="address" className="text-base font-medium">Address</Label>
+                                    <Input
+                                        id="address"
+                                        type="text"
+                                        placeholder="Enter customer address"
+                                        value={data.address}
+                                        onChange={(e) => setData('address', e.target.value)}
+                                        className={`w-full h-12 text-base ${validationErrors.address || errors.address ? 'border-red-500' : ''}`}
+                                    />
+                                    {(validationErrors.address || errors.address) && (
+                                        <p className="text-sm text-red-600">
+                                            {validationErrors.address || (Array.isArray(errors.address) ? errors.address[0] : errors.address)}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Contact No */}
+                                <div className="space-y-3">
+                                    <Label htmlFor="contact_number" className="text-base font-medium">Contact No. <span className="text-sm text-gray-500">(11 digits)</span></Label>
+                                    <Input
+                                        id="contact_number"
+                                        type="tel"
+                                        placeholder="09123456789"
+                                        value={data.contact_number}
+                                        onChange={(e) => {
+                                            // Only allow numeric input and limit to 11 digits
+                                            const value = e.target.value.replace(/\D/g, '').slice(0, 11);
+                                            setData('contact_number', value);
+                                        }}
+                                        className={`w-full h-12 text-base ${validationErrors.contact_number || errors.contact_number ? 'border-red-500' : ''}`}
+                                        maxLength={11}
+                                    />
+                                    {(validationErrors.contact_number || errors.contact_number) && (
+                                        <p className="text-sm text-red-600">
+                                            {validationErrors.contact_number || (Array.isArray(errors.contact_number) ? errors.contact_number[0] : errors.contact_number)}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Quantity and Size Row */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-3">
+                                        <Label htmlFor="quantity" className="text-base font-medium">Quantity</Label>
+                                        <Input
+                                            id="quantity"
+                                            type="number"
+                                            placeholder="Enter quantity"
+                                            value={data.quantity}
+                                            onChange={(e) => {
+                                                const value = e.target.value.replace(/\D/g, '');
+                                                setData('quantity', value);
+                                                
+                                                // Clear size if quantity changes and no longer sufficient
+                                                if (data.size && value) {
+                                                    const requestedQuantity = parseInt(value);
+                                                    const selectedItem = inventory.find(item => item.size === data.size);
+                                                    if (selectedItem && selectedItem.quantity < requestedQuantity) {
+                                                        setData('size', '');
+                                                    }
+                                                }
+                                            }}
+                                            className={`w-full h-12 text-base ${validationErrors.quantity || errors.quantity ? 'border-red-500' : ''}`}
+                                        />
+                                        {(validationErrors.quantity || errors.quantity) && (
+                                            <p className="text-sm text-red-600">
+                                                {validationErrors.quantity || (Array.isArray(errors.quantity) ? errors.quantity[0] : errors.quantity)}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-3">
+                                        <Label htmlFor="size" className="text-base font-medium">Size</Label>
+                                        <Select 
+                                            value={availableItems.length > 0 ? data.size : ""} 
+                                            onValueChange={(value) => {
+                                                if (value && value !== "" && value !== "no-stock") {
+                                                    setData('size', value);
+                                                }
+                                            }}
+                                        >
+                                            <SelectTrigger className={`w-full h-12 text-base ${validationErrors.size || errors.size ? 'border-red-500' : ''}`}>
+                                                <SelectValue 
+                                                    placeholder={
+                                                        availableItems.length === 0 
+                                                            ? (data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock')
+                                                            : "Select size"
+                                                    } 
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {availableItems.length > 0 ? (
+                                                    availableItems.map((item) => (
+                                                        <SelectItem key={item.size} value={item.size}>
+                                                            {item.size.charAt(0).toUpperCase() + item.size.slice(1)} - ₱{item.price} (Stock: {item.quantity})
+                                                        </SelectItem>
+                                                    ))
+                                                ) : (
+                                                    <SelectItem value="no-stock" disabled>
+                                                        {data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock'}
+                                                    </SelectItem>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        {(validationErrors.size || errors.size) && (
+                                            <p className="text-sm text-red-600">
+                                                {validationErrors.size || (Array.isArray(errors.size) ? errors.size[0] : errors.size)}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Date Row */}
+                                <div className="space-y-3">
+                                    <Label className="text-base font-medium">Date</Label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="order_date" className="text-sm text-gray-600">Order Date</Label>
+                                            <Input
+                                                id="order_date"
+                                                type="date"
+                                                placeholder="00/00/00"
+                                                value={data.order_date}
+                                                onChange={(e) => setData('order_date', e.target.value)}
+                                                className={`w-full h-12 text-base bg-gray-100 ${validationErrors.order_date || errors.order_date ? 'border-red-500' : ''}`}
+                                                readOnly
+                                            />
+                                            {(validationErrors.order_date || errors.order_date) && (
+                                                <p className="text-sm text-red-600">
+                                                    {validationErrors.order_date || (Array.isArray(errors.order_date) ? errors.order_date[0] : errors.order_date)}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="delivery_date" className="text-sm text-gray-600">Delivery Date</Label>
+                                            <Input
+                                                id="delivery_date"
+                                                type="date"
+                                                placeholder="00/00/00"
+                                                value={data.delivery_date}
+                                                onChange={(e) => setData('delivery_date', e.target.value)}
+                                                className={`w-full h-12 text-base ${validationErrors.delivery_date || errors.delivery_date ? 'border-red-500' : ''}`}
+                                                min={getTodayDate()}
+                                            />
+                                            {(validationErrors.delivery_date || errors.delivery_date) && (
+                                                <p className="text-sm text-red-600">
+                                                    {validationErrors.delivery_date || (Array.isArray(errors.delivery_date) ? errors.delivery_date[0] : errors.delivery_date)}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Mode of Delivery */}
+                                <div className="space-y-3">
+                                    <Label className="text-base font-medium">Mode of Delivery</Label>
+                                    <RadioGroup 
+                                        value={data.delivery_mode} 
+                                        onValueChange={(value) => setData('delivery_mode', value)}
+                                        className="flex flex-col space-y-3"
+                                    >
+                                        <div className="flex items-center space-x-3">
+                                            <RadioGroupItem value="pick_up" id="pick_up" className="w-5 h-5" />
+                                            <Label htmlFor="pick_up" className="cursor-pointer text-base">Pick up</Label>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <RadioGroupItem value="deliver" id="deliver" className="w-5 h-5" />
+                                            <Label htmlFor="deliver" className="cursor-pointer text-base">Deliver</Label>
+                                        </div>
+                                    </RadioGroup>
+                                </div>
+
+                                {/* Submit Button */}
+                                <div className="flex justify-end pt-6 space-x-4">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setIsCreateOrderModalOpen(false)}
+                                        className="px-6 py-3 text-base"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="submit"
+                                        disabled={processing}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 text-base"
+                                    >
+                                        <Plus className="w-5 h-5 mr-2" />
+                                        Create Order
+                                    </Button>
+                                </div>
+                            </form>
+                        </div>
+
+                        {/* Order Details Preview */}
+                        <div className="bg-gray-50 rounded-lg p-6">
+                            <h3 className="text-xl font-semibold mb-6">Order Preview</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <Label className="text-base font-medium">Customer Name</Label>
+                                    <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                        {data.customer_name || 'Name'}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <Label className="text-base font-medium">Address</Label>
+                                    <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                        {data.address || 'Address'}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <Label className="text-base font-medium">Quantity</Label>
+                                        <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                            {data.quantity || 'Quantity'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label className="text-base font-medium">Size</Label>
+                                        <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                            {data.size || 'Size'}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <Label className="text-base font-medium">Date</Label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <div className="text-sm text-gray-500">Order Date</div>
+                                            <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                                {data.order_date || '00/00/00'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-sm text-gray-500">Delivery Date</div>
+                                            <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                                {data.delivery_date || '00/00/00'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <Label className="text-base font-medium">Mode of Delivery</Label>
+                                    <div className="text-base text-gray-600 mt-2">
+                                        <div className="flex items-center space-x-3 mt-2">
+                                            <div className={`w-3 h-3 rounded-full ${data.delivery_mode === 'pick_up' ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
+                                            <span className={`text-base ${data.delivery_mode === 'pick_up' ? 'font-medium' : ''}`}>Pick up</span>
+                                        </div>
+                                        <div className={`flex items-center space-x-3 mt-2`}>
+                                            <div className={`w-3 h-3 rounded-full ${data.delivery_mode === 'deliver' ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
+                                            <span className={`text-base ${data.delivery_mode === 'deliver' ? 'font-medium' : ''}`}>Deliver</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Show who will be the delivery rider */}
+                                {data.delivery_mode === 'deliver' && (
+                                    <div>
+                                        <Label className="text-base font-medium">Delivery Rider</Label>
+                                        <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                            {user.name} (You)
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Success Message */}
+            {showSuccess && (
+                <div className="fixed top-4 right-4 z-50 max-w-md">
+                    <Alert className="bg-green-50 border-green-200 shadow-lg">
+                        <Check className="h-4 w-4 text-green-600" />
+                        <AlertDescription className="text-green-800 font-medium">
+                            Order created successfully!
+                        </AlertDescription>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="absolute top-2 right-2 h-6 w-6 p-0 text-green-600 hover:text-green-800"
+                            onClick={() => setShowSuccess(false)}
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </Alert>
+                </div>
+            )}
         </div>
     );
 }

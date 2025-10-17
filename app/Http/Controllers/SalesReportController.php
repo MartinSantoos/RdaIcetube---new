@@ -18,6 +18,12 @@ class SalesReportController extends Controller
         // Get all orders (including archived ones for comprehensive sales data)
         $orders = Order::orderBy('order_date', 'desc')->get();
         
+        // Debug: Log the data being passed
+        \Log::info('Sales Report Data', [
+            'orders_count' => $orders->count(),
+            'user' => Auth::user() ? Auth::user()->name : 'No user',
+        ]);
+        
         return Inertia::render('admin/sales-report', [
             'user' => Auth::user(),
             'orders' => $orders,

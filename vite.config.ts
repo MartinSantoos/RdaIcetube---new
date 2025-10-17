@@ -19,5 +19,20 @@ export default defineConfig({
     ],
     esbuild: {
         jsx: 'automatic',
+        drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+    },
+    build: {
+        // Basic production optimizations
+        minify: 'esbuild',
+        cssMinify: true,
+        sourcemap: false,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    vendor: ['react', 'react-dom'],
+                    inertia: ['@inertiajs/react'],
+                },
+            },
+        },
     },
 });

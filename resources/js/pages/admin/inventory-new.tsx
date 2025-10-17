@@ -282,13 +282,6 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                         </div>
                     </div>
                     <div className="flex items-center space-x-2 md:space-x-4">
-                        <div className="hidden md:block relative">
-                            <input 
-                                type="text" 
-                                placeholder="Search" 
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/30"
-                            />
-                        </div>
                         {isMobile && (
                             <div className="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">
                                 {user.name?.charAt(0) || 'A'}
@@ -787,7 +780,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                     value={updateData.quantity}
                                     onChange={(e) => setUpdateData('quantity', e.target.value)}
                                     min="1"
-                                    placeholder="Enter quantity to add/subtract (optional)"
+                                    placeholder="Enter quantity to add/subtract"
                                 />
                                 {updateErrors.quantity && (
                                     <p className="text-sm text-red-600 mt-1">{updateErrors.quantity}</p>

@@ -129,7 +129,7 @@
             <div class="stat-label">Completed Orders</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value">₱{{ number_format($totalRevenue ?? 0, 2) }}</div>
+            <div class="stat-value">PHP {{ number_format($totalRevenue ?? 0, 2) }}</div>
             <div class="stat-label">Total Revenue</div>
         </div>
     </div>
@@ -163,8 +163,8 @@
                     <td>{{ $order->size ? ucfirst($order->size) : 'N/A' }}</td>
                     <td>{{ $order->quantity ?? 0 }}</td>
                     <td>{{ $order->delivery_mode ? ucfirst(str_replace('_', ' ', $order->delivery_mode)) : 'N/A' }}</td>
-                    <td class="amount">₱{{ $order->price ? number_format((float)$order->price, 2) : '0.00' }}</td>
-                    <td class="amount">₱{{ $order->total ? number_format((float)$order->total, 2) : '0.00' }}</td>
+                    <td class="amount">PHP {{ $order->price ? number_format((float)$order->price, 2) : '0.00' }}</td>
+                    <td class="amount">PHP {{ $order->total ? number_format((float)$order->total, 2) : '0.00' }}</td>
                 </tr>
                 @endforeach
             </tbody>

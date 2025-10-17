@@ -78,8 +78,11 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
     const salesMetrics = useMemo(() => {
         const completedOrders = orders.filter(order => order.status === 'completed');
         
-        // Total revenue from completed orders
-        const totalRevenue = completedOrders.reduce((sum, order) => sum + order.total, 0);
+        // Total revenue from completed orders - ensure we handle null/undefined values
+        const totalRevenue = completedOrders.reduce((sum, order) => {
+            const orderTotal = order.total ? Number(order.total) : 0;
+            return sum + (isNaN(orderTotal) ? 0 : orderTotal);
+        }, 0);
         
         // Calculate average sale per day (based on unique dates)
         const uniqueDates = [...new Set(completedOrders.map(order => order.order_date.split('T')[0]))];
@@ -97,7 +100,10 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
             
             return {
                 month: date.toLocaleDateString('en-US', { month: 'short' }),
-                sales: monthOrders.reduce((sum, order) => sum + order.total, 0),
+                sales: monthOrders.reduce((sum, order) => {
+                    const orderTotal = order.total ? Number(order.total) : 0;
+                    return sum + (isNaN(orderTotal) ? 0 : orderTotal);
+                }, 0),
                 transactions: monthOrders.length
             };
         });
@@ -105,7 +111,9 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
         // Product sales ranking
         const productSales = completedOrders.reduce((acc, order) => {
             const productKey = `Ice Tube ${order.size.charAt(0).toUpperCase()}`;
-            acc[productKey] = (acc[productKey] || 0) + order.total;
+            const orderTotal = order.total ? Number(order.total) : 0;
+            const validTotal = isNaN(orderTotal) ? 0 : orderTotal;
+            acc[productKey] = (acc[productKey] || 0) + validTotal;
             return acc;
         }, {} as Record<string, number>);
 
@@ -199,15 +207,6 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                         {isMobile && (
                             <div className="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">
                                 {user.name?.charAt(0) || 'A'}
-                            </div>
-                        )}
-                        {!isMobile && (
-                            <div className="relative">
-                                <input 
-                                    type="text" 
-                                    placeholder="Search" 
-                                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/30"
-                                />
                             </div>
                         )}
                     </div>
@@ -354,13 +353,13 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                         <div className="bg-white text-gray-900 rounded-xl p-6 shadow-sm">
                             <h3 className="text-lg font-semibold mb-1">Total Revenue</h3>
                             <p className="text-sm text-gray-600 mb-4">Total Revenue</p>
-                            <p className="text-4xl font-bold">₱{salesMetrics.totalRevenue.toFixed(2)}</p>
+                            <p className="text-4xl font-bold">₱{(salesMetrics.totalRevenue || 0).toFixed(2)}</p>
                         </div>
                         
                         <div className="bg-white text-gray-900 rounded-xl p-6 shadow-sm">
                             <h3 className="text-lg font-semibold mb-1">Average Sale</h3>
                             <p className="text-sm text-gray-600 mb-4">Average Sales Per Day</p>
-                            <p className="text-4xl font-bold">₱{salesMetrics.averageSalePerDay.toFixed(2)}</p>
+                            <p className="text-4xl font-bold">₱{(salesMetrics.averageSalePerDay || 0).toFixed(2)}</p>
                         </div>
                     </div>
 
@@ -395,7 +394,7 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                                     salesMetrics.productSales.map((item, index) => (
                                         <div key={index} className="flex justify-between items-center py-2">
                                             <span className="text-gray-700">{item.product}</span>
-                                            <span className="font-medium">{item.sales.toFixed(1)}</span>
+                                            <span className="font-medium">{(item.sales || 0).toFixed(1)}</span>
                                         </div>
                                     ))
                                 ) : (
@@ -408,7 +407,7 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                                     <div className="border-t pt-4">
                                         <div className="flex justify-between items-center font-semibold">
                                             <span>Total</span>
-                                            <span>{salesMetrics.totalRevenue.toFixed(1)}</span>
+                                            <span>{(salesMetrics.totalRevenue || 0).toFixed(1)}</span>
                                         </div>
                                     </div>
                                 )}
