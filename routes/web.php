@@ -220,6 +220,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('admin/equipment/{id}/mark-operational', [App\Http\Controllers\EquipmentController::class, 'markAsOperational'])
         ->name('equipment.markAsOperational')->middleware('check.admin');
 
+    Route::post('admin/equipment/{id}/mark-broken', [App\Http\Controllers\EquipmentController::class, 'markAsBroken'])
+        ->name('equipment.markAsBroken')->middleware('check.admin');
+
     // Equipment API for dashboard
     Route::get('api/admin/equipment/dashboard-stats', [App\Http\Controllers\EquipmentController::class, 'getDashboardStats'])
         ->name('equipment.dashboardStats')->middleware('check.admin');
@@ -312,7 +315,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('employee/dashboard', function () {
         $user = Auth::user();
         
-        // Get orders assigned to this employee
+        // Get all orders assigned to this employee for stats
         $orders = \App\Models\Order::where('delivery_rider_id', $user->id)->get();
         
         // Calculate stats
@@ -321,13 +324,20 @@ Route::middleware(['auth'])->group(function () {
         $pendingOrders = $orders->where('status', 'pending')->count();
         $onDeliveryOrders = $orders->where('status', 'out_for_delivery')->count();
         
-        // Get orders due today (orders with delivery_date = today that are not completed or cancelled)
-        $dueTodayOrders = $orders->whereIn('status', ['pending', 'out_for_delivery'])
-            ->where('delivery_date', now()->toDateString())
-            ->take(5);
+        // Get orders due today (orders with delivery_date = today that are not completed)
+        // Use database query for proper date filtering
+        $dueTodayOrders = \App\Models\Order::where('delivery_rider_id', $user->id)
+            ->whereIn('status', ['pending', 'out_for_delivery'])
+            ->whereDate('delivery_date', now()->toDateString())
+            ->orderBy('delivery_date', 'asc')
+            ->take(10)
+            ->get();
             
         // Get recent orders (latest 5)
-        $recentOrders = $orders->sortByDesc('created_at')->take(5);
+        $recentOrders = \App\Models\Order::where('delivery_rider_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->take(5)
+            ->get();
         
         return Inertia::render('employee/dashboard', [
             'user' => $user,
@@ -337,8 +347,8 @@ Route::middleware(['auth'])->group(function () {
                 'pending_orders' => $pendingOrders,
                 'on_delivery_orders' => $onDeliveryOrders,
             ],
-            'due_today_orders' => $dueTodayOrders->values(),
-            'recent_orders' => $recentOrders->values(),
+            'due_today_orders' => $dueTodayOrders,
+            'recent_orders' => $recentOrders,
         ]);
     })->name('employee.dashboard')->middleware('check.employee');
 

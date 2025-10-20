@@ -13,14 +13,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::create([
-            'name' => 'Administrator',
-            'username' => 'mavs',
-            'email' => 'admin@icesystem.com',
-            'password' => bcrypt('123'),
-            'user_type' => 1, // Admin
+        // Call the AdminUserSeeder to create production admin user
+        $this->call([
+            AdminUserSeeder::class,
         ]);
     }
 }

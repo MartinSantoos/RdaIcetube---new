@@ -314,7 +314,7 @@ class OrderController extends Controller
             'quantity' => 'required|integer|min:1',
             'size' => 'required|string',
             'order_date' => 'required|date',
-            'delivery_date' => 'required|date|after:today',
+            'delivery_date' => 'required|date|after_or_equal:today',
             'delivery_mode' => 'required|in:pick_up,deliver',
             'delivery_rider_id' => 'nullable|exists:users,id',
         ]);
@@ -496,10 +496,6 @@ class OrderController extends Controller
             );
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Order completed successfully with delivery photo!',
-            'delivery_photo' => $deliveryPhotoPath
-        ]);
+        return redirect()->back()->with('success', 'Order completed successfully with delivery photo!');
     }
 }

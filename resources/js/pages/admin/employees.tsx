@@ -5,7 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import DateFilterModal from '@/components/DateFilterModal';
+import { StatusBadge } from '@/components/enhanced/status-badge';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -48,10 +58,19 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     const [searchTerm, setSearchTerm] = useState('');
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const isMobile = useIsMobile();
     
     const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
+    const confirmLogout = () => {
         router.post('/logout');
+    };
+
+    const cancelLogout = () => {
+        setIsLogoutModalOpen(false);
     };
 
     const handleExport = (startDate: string, endDate: string, format: 'pdf' | 'csv') => {
@@ -79,6 +98,27 @@ export default function Employees({ user, employees = [], archivedEmployees = []
 
     // Form for toggle status
     const toggleForm = useForm();
+
+    // Contact number validation
+    const validateContactNumber = (contact: string) => {
+        if (!contact) return 'Contact number is required';
+        if (contact.length !== 11) return 'Contact number must be exactly 11 digits';
+        if (!contact.startsWith('09')) return 'Contact number must start with 09';
+        if (!/^\d+$/.test(contact)) return 'Contact number must contain only digits';
+        return '';
+    };
+
+    const [contactError, setContactError] = useState('');
+
+    const handleContactChange = (value: string) => {
+        // Only allow numeric input and limit to 11 digits
+        const numericValue = value.replace(/\D/g, '').slice(0, 11);
+        setData('contact', numericValue);
+        
+        // Validate in real-time
+        const error = validateContactNumber(numericValue);
+        setContactError(error);
+    };
 
     // Filter employees based on search term
     const filteredEmployees = employees.filter(emp => 
@@ -149,6 +189,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
             password: '',
             status: employee.status
         });
+        setContactError(''); // Clear any previous contact validation errors
         setEditingEmployee(employee);
         setIsEditMode(true);
         setIsModalOpen(true);
@@ -157,6 +198,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     // Reset form and close modal
     const resetForm = () => {
         reset();
+        setContactError('');
         setIsModalOpen(false);
         setIsEditMode(false);
         setEditingEmployee(null);
@@ -331,14 +373,14 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                     setIsEditMode(false);
                                     setEditingEmployee(null);
                                     setIsModalOpen(true);
-                                }} className="bg-white text-blue-600 hover:bg-gray-100 w-full sm:w-auto">
+                                }} variant="secondary" size="sm">
                                     <Plus className="h-4 w-4 mr-2" />
                                     <span className="hidden sm:inline">Add Employee</span>
                                     <span className="sm:hidden">Add</span>
                                 </Button>
                                 <Button 
                                     variant="secondary" 
-                                    className="bg-white text-blue-600 hover:bg-gray-100 w-full sm:w-auto"
+                                    size="sm"
                                     onClick={() => setIsExportModalOpen(true)}
                                 >
                                     <Download className="h-4 w-4 mr-2" />
@@ -380,43 +422,35 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                     <div>
                                         {/* Desktop Table */}
                                         <div className="hidden md:block overflow-x-auto">
-                                            <table className="min-w-full divide-y divide-gray-200">
-                                                <thead>
-                                                    <tr>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Employee ID</th>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Name</th>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Position</th>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Contact</th>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Status</th>
-                                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="bg-white divide-y divide-gray-200">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead className="font-semibold">Status</TableHead>
+                                                        <TableHead className="font-semibold">Employee ID</TableHead>
+                                                        <TableHead className="font-semibold">Name</TableHead>
+                                                        <TableHead className="font-semibold">Position</TableHead>
+                                                        <TableHead className="font-semibold">Contact</TableHead>
+                                                        <TableHead className="font-semibold">Actions</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
                                                     {filteredEmployees.length === 0 ? (
-                                                        <tr>
-                                                            <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                                                        <TableRow>
+                                                            <TableCell colSpan={6} className="text-center text-gray-500 py-8">
                                                                 {searchTerm ? 'No employees found matching your search.' : 'No employees found.'}
-                                                            </td>
-                                                        </tr>
+                                                            </TableCell>
+                                                        </TableRow>
                                                     ) : (
                                                         filteredEmployees.map(emp => (
-                                                            <tr key={emp.id} className="hover:bg-gray-50">
-                                                                <td className="px-6 py-4 whitespace-nowrap font-medium">{emp.id}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap font-medium">{emp.name}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap">{emp.position}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap">{emp.contact}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                                {emp.status === 'active' ? (
-                                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                                        • Active
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                                        • Inactive
-                                                                    </span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                            <TableRow key={emp.id} className="hover:bg-gray-50">
+                                                                <TableCell>
+                                                                    <StatusBadge status={emp.status} size="sm" />
+                                                                </TableCell>
+                                                                <TableCell className="font-medium">{emp.id}</TableCell>
+                                                            <TableCell className="font-medium">{emp.name}</TableCell>
+                                                            <TableCell>{emp.position}</TableCell>
+                                                            <TableCell>{emp.contact}</TableCell>
+                                                            <TableCell>
                                                                 <DropdownMenu>
                                                                     <DropdownMenuTrigger asChild>
                                                                         <Button 
@@ -458,13 +492,13 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                                         </DropdownMenuItem>
                                                                     </DropdownMenuContent>
                                                                 </DropdownMenu>
-                                                            </td>
-                                                        </tr>
+                                                            </TableCell>
+                                                        </TableRow>
                                                         ))
                                                 )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                </TableBody>
+                                            </Table>
+                                        </div>
                                     
                                     {/* Mobile Cards */}
                                     <div className="md:hidden space-y-4">
@@ -481,11 +515,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                             <p className="text-sm text-gray-600">ID: {emp.id}</p>
                                                         </div>
                                                         <div className="flex items-center space-x-2">
-                                                            {emp.status === 'active' ? (
-                                                                <Badge className="bg-blue-100 text-blue-800 border-blue-200">Active</Badge>
-                                                            ) : (
-                                                                <Badge className="bg-gray-100 text-gray-800 border-gray-200">Inactive</Badge>
-                                                            )}
+                                                            <StatusBadge status={emp.status} size="sm" />
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
                                                                     <Button 
@@ -555,24 +585,24 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                         <>
                                             {/* Desktop Archives Table */}
                                             <div className="hidden md:block overflow-x-auto">
-                                                <table className="min-w-full divide-y divide-gray-200">
-                                                    <thead>
-                                                        <tr>
-                                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Employee ID</th>
-                                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Name</th>
-                                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Position</th>
-                                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Contact</th>
-                                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider font-semibold">Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="bg-white divide-y divide-gray-200">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead className="font-semibold">Employee ID</TableHead>
+                                                            <TableHead className="font-semibold">Name</TableHead>
+                                                            <TableHead className="font-semibold">Position</TableHead>
+                                                            <TableHead className="font-semibold">Contact</TableHead>
+                                                            <TableHead className="font-semibold">Actions</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
                                                         {archivedEmployees.map(emp => (
-                                                            <tr key={emp.id} className="hover:bg-gray-50 bg-gray-50">
-                                                                <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-600">{emp.id}</td>
-                                                                <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-600">{emp.name}</td>
-                                                                <td className="px-6 py-4 whitespace-nowrap text-gray-600">{emp.position}</td>
-                                                                <td className="px-6 py-4 whitespace-nowrap text-gray-600">{emp.contact}</td>
-                                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                            <TableRow key={emp.id} className="hover:bg-gray-50 bg-gray-50">
+                                                                <TableCell className="font-medium text-gray-600">{emp.id}</TableCell>
+                                                                <TableCell className="font-medium text-gray-600">{emp.name}</TableCell>
+                                                                <TableCell className="text-gray-600">{emp.position}</TableCell>
+                                                                <TableCell className="text-gray-600">{emp.contact}</TableCell>
+                                                                <TableCell>
                                                                     <DropdownMenu>
                                                                         <DropdownMenuTrigger asChild>
                                                                             <Button 
@@ -594,11 +624,11 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                                             </DropdownMenuItem>
                                                                         </DropdownMenuContent>
                                                                     </DropdownMenu>
-                                                                </td>
-                                                            </tr>
+                                                                </TableCell>
+                                                            </TableRow>
                                                         ))}
-                                                    </tbody>
-                                                </table>
+                                                    </TableBody>
+                                                </Table>
                                             </div>
                                             
                                             {/* Mobile Archive Cards */}
@@ -611,7 +641,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                                 <p className="text-sm text-gray-500">ID: {emp.id}</p>
                                                             </div>
                                                             <div className="flex items-center space-x-2">
-                                                                <Badge className="bg-red-100 text-red-800 border-red-200">Archived</Badge>
+                                                                <Badge variant="destructive">Archived</Badge>
                                                                 <DropdownMenu>
                                                                     <DropdownMenuTrigger asChild>
                                                                         <Button 
@@ -710,18 +740,19 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                             )}
                                         </div>
                                         <div>
-                                            <label htmlFor="contact" className="block text-sm font-medium text-gray-700">Contact *</label>
+                                            <label htmlFor="contact" className="block text-sm font-medium text-gray-700">Contact * <span className="text-sm text-gray-500">(11 digits starting with 09)</span></label>
                                             <Input 
                                                 id="contact" 
-                                                type="text" 
-                                                placeholder="09XXXXXXXXX" 
+                                                type="tel" 
+                                                placeholder="09123456789" 
                                                 value={data.contact} 
-                                                onChange={e => setData('contact', e.target.value)} 
-                                                className={errors.contact ? 'border-red-300' : ''}
+                                                onChange={(e) => handleContactChange(e.target.value)} 
+                                                className={`${errors.contact || contactError ? 'border-red-300' : ''} font-mono`}
+                                                maxLength={11}
                                                 required 
                                             />
-                                            {errors.contact && (
-                                                <p className="text-sm text-red-600 mt-1">{errors.contact}</p>
+                                            {(errors.contact || contactError) && (
+                                                <p className="text-sm text-red-600 mt-1">{errors.contact || contactError}</p>
                                             )}
                                         </div>
                                         {!isEditMode && (
@@ -758,7 +789,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                             <Button type="button" variant="outline" onClick={resetForm} disabled={processing}>
                                                 Cancel
                                             </Button>
-                                            <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={processing}>
+                                            <Button type="submit" variant="default" disabled={processing}>
                                                 {processing ? 'Saving...' : (isEditMode ? 'Update Employee' : 'Add Employee')}
                                             </Button>
                                         </div>
@@ -841,6 +872,26 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                 title="Employee Report"
                 description="Select date range to export employee records and activity history."
             />
+
+            {/* Logout Confirmation Dialog */}
+            <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to sign in again to access your account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelLogout}>
+                            No, Stay Logged In
+                        </Button>
+                        <Button variant="destructive" onClick={confirmLogout}>
+                            Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

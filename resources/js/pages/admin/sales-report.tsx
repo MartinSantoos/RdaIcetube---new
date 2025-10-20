@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { BarChart3, Package, Settings, ShoppingCart, Users, LogOut, Search, Download, Menu, X } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import DateFilterModal from '@/components/DateFilterModal';
 import {
   Chart as ChartJS,
@@ -57,10 +58,19 @@ interface SalesReportProps {
 export default function SalesReport({ user, orders }: SalesReportProps) {
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const isMobile = useIsMobile();
     
     const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
+    const confirmLogout = () => {
         router.post('/logout');
+    };
+
+    const cancelLogout = () => {
+        setIsLogoutModalOpen(false);
     };
 
     const handleExport = (startDate: string, endDate: string, format: 'pdf' | 'csv') => {
@@ -338,7 +348,7 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                             <div className="flex items-center space-x-3">
                                 <Button 
                                     variant="secondary" 
-                                    className="bg-white text-blue-600 hover:bg-gray-100 text-sm md:text-base"
+                                    size="sm"
                                     onClick={() => setIsExportModalOpen(true)}
                                 >
                                     <Download className="h-4 w-4 mr-2" />
@@ -425,6 +435,26 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                 title="Sales Report"
                 description="Select date range to export sales data and revenue analytics."
             />
+
+            {/* Logout Confirmation Dialog */}
+            <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to sign in again to access your account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelLogout}>
+                            No, Stay Logged In
+                        </Button>
+                        <Button variant="destructive" onClick={confirmLogout}>
+                            Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

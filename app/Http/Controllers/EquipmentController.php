@@ -141,6 +141,41 @@ class EquipmentController extends Controller
     }
 
     /**
+     * Mark equipment as broken
+     */
+    public function markAsBroken($id)
+    {
+        $equipment = Equipment::findOrFail($id);
+        $previousStatus = $equipment->status;
+        
+        // Update equipment status
+        $equipment->update(['status' => 'broken']);
+        
+        // Cancel any ongoing maintenance
+        Maintenance::where('equipment_id', $id)
+            ->whereIn('status', ['scheduled', 'in_progress'])
+            ->update(['status' => 'cancelled']);
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'equipment_broken',
+                "Marked {$equipment->equipment_name} as broken",
+                $equipment,
+                [
+                    'equipment_name' => $equipment->equipment_name,
+                    'equipment_type' => $equipment->equipment_type,
+                    'previous_status' => $previousStatus,
+                    'new_status' => 'broken'
+                ],
+                auth()->user()->id
+            );
+        }
+
+        return redirect()->back()->with('success', 'Equipment marked as broken successfully!');
+    }
+
+    /**
      * Get equipment statistics for dashboard
      */
     public function getDashboardStats()

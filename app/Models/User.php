@@ -67,13 +67,14 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the username attribute for authentication.
+     * Get the username attribute for authentication with automatic capitalization.
      *
      * @return string
      */
-    public function getUsernameAttribute()
+    public function getUsernameAttribute($value = null)
     {
-        return $this->attributes['username'];
+        $rawValue = $value ?? $this->attributes['username'] ?? '';
+        return ucfirst(strtolower($rawValue));
     }
 
     /**
@@ -130,6 +131,30 @@ class User extends Authenticatable
     public function getContactAttribute()
     {
         return $this->contact_number;
+    }
+
+    /**
+     * Accessor to automatically capitalize the first letter of the name
+     */
+    public function getNameAttribute($value)
+    {
+        return ucfirst(strtolower($value ?? ''));
+    }
+
+    /**
+     * Mutator to automatically capitalize the first letter of the name when storing
+     */
+    public function setNameAttribute($value)
+    {
+        $this->attributes['name'] = ucfirst(strtolower($value ?? ''));
+    }
+
+    /**
+     * Mutator to automatically capitalize the first letter of the username when storing
+     */
+    public function setUsernameAttribute($value)
+    {
+        $this->attributes['username'] = ucfirst(strtolower($value ?? ''));
     }
 
     /**

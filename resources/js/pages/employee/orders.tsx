@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -69,14 +69,34 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
     const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [isCameraActive, setIsCameraActive] = useState(false);
+    const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
     const [showSuccess, setShowSuccess] = useState(false);
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
     // Get today's date in YYYY-MM-DD format
     const getTodayDate = () => {
         const today = new Date();
         return today.toISOString().split('T')[0];
     };
+
+    // Cleanup camera stream on component unmount
+    useEffect(() => {
+        return () => {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+        };
+    }, [cameraStream]);
+
+    // Set video stream when camera is active
+    useEffect(() => {
+        const video = document.getElementById('camera-video') as HTMLVideoElement;
+        if (video && cameraStream) {
+            video.srcObject = cameraStream;
+        }
+    }, [cameraStream, isCameraActive]);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         customer_name: '',
@@ -91,7 +111,15 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
     });
 
     const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
+    const confirmLogout = () => {
         router.post('/logout');
+    };
+
+    const cancelLogout = () => {
+        setIsLogoutModalOpen(false);
     };
 
     const formatDate = (dateString: string) => {
@@ -148,6 +176,77 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
         }
     };
 
+    const handleCameraCapture = async () => {
+        try {
+            // Check if camera is supported
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                // Fallback to file input if camera is not supported
+                const cameraInput = document.getElementById('photo-camera') as HTMLInputElement;
+                if (cameraInput) {
+                    cameraInput.value = '';
+                    cameraInput.click();
+                }
+                return;
+            }
+
+            // Request camera access
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment' // Use rear camera on mobile
+                } 
+            });
+            
+            setCameraStream(stream);
+            setIsCameraActive(true);
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            // Fallback to file input if camera access fails
+            const cameraInput = document.getElementById('photo-camera') as HTMLInputElement;
+            if (cameraInput) {
+                cameraInput.value = '';
+                cameraInput.click();
+            }
+        }
+    };
+
+    const stopCamera = () => {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            setCameraStream(null);
+        }
+        setIsCameraActive(false);
+    };
+
+    const capturePhoto = () => {
+        const video = document.getElementById('camera-video') as HTMLVideoElement;
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+
+        if (video && context) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0);
+
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    setSelectedPhoto(file);
+                    setPhotoPreview(canvas.toDataURL());
+                    stopCamera();
+                }
+            }, 'image/jpeg', 0.8);
+        }
+    };
+
+    const handleFileUpload = () => {
+        // Reset the file input
+        const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
+        if (fileInput) {
+            fileInput.value = '';
+            fileInput.click();
+        }
+    };
+
     const handlePhotoUpload = async () => {
         if (!selectedPhoto || !orderToComplete) return;
 
@@ -156,39 +255,41 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
             const formData = new FormData();
             formData.append('delivery_photo', selectedPhoto);
 
-            const response = await fetch(`/employee/orders/${orderToComplete.order_id}/complete-with-photo`, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            // Use Inertia's router.post with FormData to handle CSRF properly
+            router.post(`/employee/orders/${orderToComplete.order_id}/complete-with-photo`, formData, {
+                forceFormData: true,
+                onSuccess: () => {
+                    // Reset modal state
+                    setIsPhotoUploadModalOpen(false);
+                    setSelectedPhoto(null);
+                    setPhotoPreview(null);
+                    setOrderToComplete(null);
+                    
+                    // Success message will be handled by backend flash message
+                    alert('Order completed successfully with delivery photo!');
                 },
+                onError: (errors) => {
+                    console.error('Upload failed:', errors);
+                    alert('Failed to upload photo and complete order. Please try again.');
+                },
+                onFinish: () => {
+                    setIsUploading(false);
+                }
             });
-
-            if (response.ok) {
-                // Reset modal state
-                setIsPhotoUploadModalOpen(false);
-                setSelectedPhoto(null);
-                setPhotoPreview(null);
-                setOrderToComplete(null);
-                
-                // Refresh the page to see updated order status
-                router.reload();
-            } else {
-                alert('Failed to upload photo and complete order. Please try again.');
-            }
         } catch (error) {
             console.error('Error uploading photo:', error);
             alert('An error occurred while uploading the photo. Please try again.');
-        } finally {
             setIsUploading(false);
         }
     };
 
     const closePhotoModal = () => {
+        stopCamera(); // Stop camera if active
         setIsPhotoUploadModalOpen(false);
         setSelectedPhoto(null);
         setPhotoPreview(null);
         setOrderToComplete(null);
+        setIsCameraActive(false);
     };
 
     const handleStatusUpdate = async (orderId: string, newStatus: string) => {
@@ -270,8 +371,6 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
             
             if (deliveryDate < today) {
                 errors.delivery_date = 'Delivery date cannot be in the past';
-            } else if (deliveryDate.getTime() === today.getTime()) {
-                errors.delivery_date = 'Delivery date must be after today';
             }
         }
         
@@ -984,27 +1083,75 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                                 Remove Photo
                                             </Button>
                                         </div>
+                                    ) : isCameraActive ? (
+                                        <div className="space-y-3">
+                                            <video
+                                                id="camera-video"
+                                                autoPlay
+                                                playsInline
+                                                className="w-full max-w-sm mx-auto rounded-lg bg-black"
+                                                style={{ maxHeight: '300px' }}
+                                            />
+                                            <div className="flex gap-3 justify-center">
+                                                <Button
+                                                    type="button"
+                                                    onClick={capturePhoto}
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                                >
+                                                    <Camera className="mr-2 h-4 w-4" />
+                                                    Capture Photo
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={stopCamera}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        </div>
                                     ) : (
                                         <div className="text-center">
                                             <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                                            <p className="text-sm text-gray-600 mb-2">
-                                                Click to select a photo or take a picture
+                                            <p className="text-sm text-gray-600 mb-4">
+                                                Choose how to add a photo of the delivered product
                                             </p>
-                                            <Label 
-                                                htmlFor="photo-upload" 
-                                                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors"
-                                            >
-                                                <Camera className="mr-2 h-4 w-4" />
-                                                Take Photo
-                                            </Label>
-                                            <Input
-                                                id="photo-upload"
-                                                type="file"
-                                                accept="image/*"
-                                                capture="environment"
-                                                onChange={handlePhotoChange}
-                                                className="hidden"
-                                            />
+                                            <div className="flex flex-col gap-3">
+                                                {/* Take Photo Button */}
+                                                <Button
+                                                    type="button"
+                                                    onClick={handleCameraCapture}
+                                                    className="inline-flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors"
+                                                >
+                                                    <Camera className="mr-2 h-4 w-4" />
+                                                    Take Photo with Camera
+                                                </Button>
+                                                <Input
+                                                    id="photo-camera"
+                                                    type="file"
+                                                    accept="image/*"
+                                                    capture="environment"
+                                                    onChange={handlePhotoChange}
+                                                    className="hidden"
+                                                />
+                                                
+                                                {/* Upload Photo Button */}
+                                                <Button
+                                                    type="button"
+                                                    onClick={handleFileUpload}
+                                                    className="inline-flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors"
+                                                >
+                                                    <Upload className="mr-2 h-4 w-4" />
+                                                    Upload from Gallery
+                                                </Button>
+                                                <Input
+                                                    id="photo-upload"
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handlePhotoChange}
+                                                    className="hidden"
+                                                />
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -1221,15 +1368,18 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="delivery_date" className="text-sm text-gray-600">Delivery Date</Label>
-                                            <Input
-                                                id="delivery_date"
-                                                type="date"
-                                                placeholder="00/00/00"
-                                                value={data.delivery_date}
-                                                onChange={(e) => setData('delivery_date', e.target.value)}
-                                                className={`w-full h-12 text-base ${validationErrors.delivery_date || errors.delivery_date ? 'border-red-500' : ''}`}
-                                                min={getTodayDate()}
-                                            />
+                                            <div className="relative">
+                                                <Input
+                                                    id="delivery_date"
+                                                    type="date"
+                                                    placeholder="dd/mm/yyyy"
+                                                    value={data.delivery_date}
+                                                    onChange={(e) => setData('delivery_date', e.target.value)}
+                                                    className={`w-full h-12 text-base pr-10 ${validationErrors.delivery_date || errors.delivery_date ? 'border-red-500' : ''}`}
+                                                    min={getTodayDate()}
+                                                />
+                                                <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+                                            </div>
                                             {(validationErrors.delivery_date || errors.delivery_date) && (
                                                 <p className="text-sm text-red-600">
                                                     {validationErrors.delivery_date || (Array.isArray(errors.delivery_date) ? errors.delivery_date[0] : errors.delivery_date)}
@@ -1357,6 +1507,26 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                             </div>
                         </div>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Logout Confirmation Dialog */}
+            <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to sign in again to access your account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelLogout}>
+                            No, Stay Logged In
+                        </Button>
+                        <Button variant="destructive" onClick={confirmLogout}>
+                            Yes, Logout
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

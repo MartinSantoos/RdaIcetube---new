@@ -2,6 +2,8 @@ import { Head, Link, router } from '@inertiajs/react';
 import { BarChart3, Package, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X, Clock, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import SalesChart from '@/components/SalesChart';
 
 interface AdminDashboardProps {
@@ -73,6 +75,7 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
     const [activityFilter, setActivityFilter] = useState<'recent' | 'today' | 'all'>('recent');
     const [filteredActivities, setFilteredActivities] = useState(recentActivities || []);
     const [loadingActivities, setLoadingActivities] = useState(false);
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const isMobile = useIsMobile();
     
 
@@ -115,7 +118,15 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
     };
     
     const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
+    const confirmLogout = () => {
         router.post('/logout');
+    };
+
+    const cancelLogout = () => {
+        setIsLogoutModalOpen(false);
     };
 
     const fetchActivities = async (filter: 'recent' | 'today' | 'all') => {
@@ -581,6 +592,26 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                     </div>
                 </main>
             </div>
+
+            {/* Logout Confirmation Dialog */}
+            <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to sign in again to access your account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelLogout}>
+                            No, Stay Logged In
+                        </Button>
+                        <Button variant="destructive" onClick={confirmLogout}>
+                            Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

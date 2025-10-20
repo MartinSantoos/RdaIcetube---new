@@ -66,8 +66,7 @@ class InventoryController extends Controller
             'product_name' => 'required|string|max:100',
             'size' => 'required|string|max:100',
             'price' => 'required|numeric|min:0',
-            'quantity' => 'required|integer|min:0',
-            'description' => 'nullable|string|max:500' // Keep validation but don't store
+            'quantity' => 'required|integer|min:0'
         ]);
 
         // Check if an inventory item with the same size already exists

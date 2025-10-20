@@ -2,6 +2,8 @@ import { Head, Link, router } from '@inertiajs/react';
 import { Package, ShoppingCart, User, LogOut, Truck, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface User {
     id: number;
@@ -41,10 +43,19 @@ interface EmployeeDashboardProps {
 
 export default function EmployeeDashboard({ user, stats, due_today_orders, recent_orders }: EmployeeDashboardProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const isMobile = useIsMobile();
     
     const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
+    const confirmLogout = () => {
         router.post('/logout');
+    };
+
+    const cancelLogout = () => {
+        setIsLogoutModalOpen(false);
     };
 
     const formatDate = (dateString: string) => {
@@ -93,13 +104,6 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                         </div>
                     </div>
                     <div className="flex items-center space-x-2 md:space-x-4">
-                        <div className="hidden md:block relative">
-                            <input 
-                                type="text" 
-                                placeholder="Search" 
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/30"
-                            />
-                        </div>
                         <div className="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold md:hidden">
                             {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                         </div>
@@ -238,7 +242,7 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                     </div>
 
                     {/* Stats Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
                         <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
                             <div className="flex items-center justify-between">
                                 <div>
@@ -262,13 +266,44 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                 </div>
                             </div>
                         </div>
+
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-sm md:text-lg font-semibold text-gray-700">On Delivery</h3>
+                                    <p className="text-2xl md:text-3xl font-bold text-orange-600">{stats.on_delivery_orders}</p>
+                                </div>
+                                <div className="bg-orange-100 p-2 md:p-3 rounded-lg">
+                                    <Truck className="w-6 md:w-8 h-6 md:h-8 text-orange-600" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-md border-l-4 border-red-500">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-sm md:text-lg font-semibold text-gray-700">Due Today</h3>
+                                    <p className="text-2xl md:text-3xl font-bold text-red-600">{due_today_orders.length}</p>
+                                </div>
+                                <div className="bg-red-100 p-2 md:p-3 rounded-lg">
+                                    <Truck className="w-6 md:w-8 h-6 md:h-8 text-red-600" />
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     {/* Tables */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
                         {/* Due Today */}
                         <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
-                            <h3 className="text-base md:text-lg font-semibold text-gray-700 mb-2">Due Today</h3>
+                            <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-base md:text-lg font-semibold text-gray-700">Due Today</h3>
+                                {due_today_orders.length > 0 && (
+                                    <span className="bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded-full">
+                                        {due_today_orders.length} {due_today_orders.length === 1 ? 'order' : 'orders'}
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-xs md:text-sm text-gray-500 mb-4 md:mb-6">Orders scheduled for delivery today</p>
                             
                             <div className="overflow-x-auto">
@@ -286,7 +321,11 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                         {due_today_orders.length === 0 ? (
                                             <tr>
                                                 <td colSpan={5} className="py-6 md:py-8 text-center text-gray-500 text-sm">
-                                                    No orders due today
+                                                    <div className="flex flex-col items-center">
+                                                        <Truck className="w-8 h-8 text-gray-300 mb-2" />
+                                                        <p>No orders due today</p>
+                                                        <p className="text-xs text-gray-400 mt-1">All caught up!</p>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ) : (
@@ -302,6 +341,7 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                                         <div>
                                                             <p className="font-medium">#{order.order_id}</p>
                                                             <p className="text-xs text-gray-500">{order.quantity}x {order.size}</p>
+                                                            <p className="text-xs text-blue-600 font-medium">Due Today</p>
                                                         </div>
                                                     </td>
                                                     <td className="hidden lg:table-cell py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600 max-w-xs truncate">
@@ -309,18 +349,19 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                                     </td>
                                                     <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
                                                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                                            order.status === 'pending' ? 'bg-blue-100 text-blue-800' :
-                                                            order.status === 'out_for_delivery' ? 'bg-orange-100 text-orange-800' :
+                                                            order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
+                                                            order.status === 'out_for_delivery' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
                                                             'bg-gray-100 text-gray-800'
                                                         }`}>
-                                                            {order.status === 'out_for_delivery' ? 'On Delivery' : 
+                                                            {order.status === 'pending' ? '⏳ Pending' :
+                                                             order.status === 'out_for_delivery' ? '🚚 On Delivery' : 
                                                              order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                                                         </span>
                                                     </td>
                                                     <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
                                                         <Link 
                                                             href="/employee/orders" 
-                                                            className="text-blue-600 hover:text-blue-800 text-xs md:text-sm font-medium"
+                                                            className="text-blue-600 hover:text-blue-800 text-xs md:text-sm font-medium bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition-colors"
                                                         >
                                                             View Details
                                                         </Link>
@@ -380,6 +421,26 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                     </div>
                 </main>
             </div>
+
+            {/* Logout Confirmation Dialog */}
+            <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to sign in again to access your account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelLogout}>
+                            No, Stay Logged In
+                        </Button>
+                        <Button variant="destructive" onClick={confirmLogout}>
+                            Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

@@ -19,21 +19,9 @@ export default function Login({ status, canResetPassword }: LoginProps) {
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        
-        console.log('Submitting login form:', data);
 
         post('/login', {
-            onStart: () => {
-                console.log('Login request started');
-            },
-            onSuccess: () => {
-                console.log('Login successful!');
-            },
-            onError: (errors) => {
-                console.log('Login errors:', errors);
-            },
             onFinish: () => {
-                console.log('Login request finished');
                 reset('password');
             },
         });
@@ -103,7 +91,12 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                                 id="username"
                                 type="text"
                                 value={data.username}
-                                onChange={(e) => setData('username', e.target.value)}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    // Capitalize first letter while preserving the rest
+                                    const capitalizedValue = value.charAt(0).toUpperCase() + value.slice(1);
+                                    setData('username', capitalizedValue);
+                                }}
                                 required
                                 autoFocus
                                 tabIndex={1}

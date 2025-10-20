@@ -40,8 +40,30 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        // Check if user exists
-        $user = \App\Models\User::where('username', $this->input('username'))->first();
+        $inputUsername = $this->input('username');
+        
+        // First, try to find user by the exact username
+        $user = \App\Models\User::where('username', $inputUsername)->first();
+        
+        // If not found, try to find by name (display name) and convert to username
+        if (!$user) {
+            $userByName = \App\Models\User::where('name', $inputUsername)->first();
+            if ($userByName) {
+                // Update the request data to use the correct username
+                $this->merge(['username' => $userByName->username]);
+                $user = $userByName;
+            }
+        }
+        
+        // If still not found, try to generate username from input (remove spaces, lowercase)
+        if (!$user) {
+            $generatedUsername = strtolower(str_replace(' ', '', $inputUsername));
+            $user = \App\Models\User::where('username', $generatedUsername)->first();
+            if ($user) {
+                // Update the request data to use the correct username
+                $this->merge(['username' => $generatedUsername]);
+            }
+        }
         
         if (!$user) {
             RateLimiter::hit($this->throttleKey());
@@ -51,7 +73,7 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        // Attempt authentication
+        // Attempt authentication with the correct username
         if (! Auth::attempt($this->only('username', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 

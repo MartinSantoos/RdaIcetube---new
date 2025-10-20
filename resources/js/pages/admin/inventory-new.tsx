@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import DateFilterModal from '@/components/DateFilterModal';
 import {
     Select,
@@ -58,10 +59,20 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
     const [customSizeMode, setCustomSizeMode] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const isMobile = useIsMobile();
 
     const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
+    const confirmLogout = () => {
         router.post('/logout');
+    };
+
+    const cancelLogout = () => {
+        setIsLogoutModalOpen(false);
     };
 
     const handleExport = (startDate: string, endDate: string, format: 'pdf' | 'csv') => {
@@ -125,8 +136,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
         product_name: '',
         size: '',
         price: '',
-        quantity: '',
-        description: ''
+        quantity: ''
     });
 
     const handleUpdateStock = (item: InventoryItem) => {
@@ -146,8 +156,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
             product_name: '',
             size: '',
             price: '',
-            quantity: '',
-            description: ''
+            quantity: ''
         });
         setSizeError(''); // Clear size error when opening modal
         setShowAddInventoryModal(true);
@@ -222,7 +231,6 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                 // Show error message if there's a validation error
                 if (errors.quantity) {
                     // Keep modal open to show error
-                    console.log('Quantity error:', errors.quantity);
                 }
             }
         });
@@ -242,11 +250,21 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
     const inStockCount = inventory.filter(item => item.status === 'available').length;
     const criticalStockCount = inventory.filter(item => item.status === 'critical').length;
 
+    // Filter inventory based on search term
+    const filteredInventory = inventory.filter(item => {
+        const searchLower = searchTerm.toLowerCase();
+        return (
+            item.product_name.toLowerCase().includes(searchLower) ||
+            item.size.toLowerCase().includes(searchLower) ||
+            item.inventory_id.toString().includes(searchLower)
+        );
+    });
+
     const getStatusBadge = (status: string) => {
         if (status === 'critical') {
             return <Badge variant="destructive">Critical</Badge>;
         } else if (status === 'available') {
-            return <Badge className="bg-green-500 text-white">In Stock</Badge>;
+            return <Badge variant="default">In Stock</Badge>;
         } else if (status === 'out_of_stock') {
             return <Badge variant="secondary">Out of Stock</Badge>;
         }
@@ -426,7 +444,8 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
                                 <Button 
                                     onClick={handleAddInventory}
-                                    className="bg-white text-blue-600 hover:bg-gray-100 w-full sm:w-auto"
+                                    variant="secondary"
+                                    size="sm"
                                     title="Add new inventory item"
                                 >
                                     <Plus className="h-4 w-4 mr-2" />
@@ -435,7 +454,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                 </Button>
                                 <Button 
                                     variant="secondary" 
-                                    className="bg-white text-blue-600 hover:bg-gray-100 w-full sm:w-auto"
+                                    size="sm"
                                     onClick={() => setIsExportModalOpen(true)}
                                 >
                                     <Download className="h-4 w-4 mr-2" />
@@ -518,36 +537,44 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {inventory.map((item) => (
-                                            <TableRow key={item.inventory_id}>
-                                                <TableCell>
-                                                    {item.status === 'critical' ? (
-                                                        <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Critical</Badge>
-                                                    ) : item.status === 'available' ? (
-                                                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">In Stock</Badge>
-                                                    ) : (
-                                                        <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">Out of Stock</Badge>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="font-medium">
-                                                    {String(item.inventory_id).padStart(3, '0')}
-                                                </TableCell>
-                                                <TableCell>{item.product_name}</TableCell>
-                                                <TableCell className="capitalize">{item.size}</TableCell>
-                                                <TableCell>₱{item.price}</TableCell>
-                                                <TableCell className="font-medium">{item.quantity}</TableCell>
-                                                <TableCell>09/12/25</TableCell>
-                                                <TableCell>
-                                                    <Button
-                                                        onClick={() => handleUpdateStock(item)}
-                                                        size="sm"
-                                                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                                                    >
-                                                        Update Stocks
-                                                    </Button>
+                                        {filteredInventory.length > 0 ? (
+                                            filteredInventory.map((item) => (
+                                                <TableRow key={item.inventory_id}>
+                                                    <TableCell>
+                                                        {item.status === 'critical' ? (
+                                                            <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Critical</Badge>
+                                                        ) : item.status === 'available' ? (
+                                                            <Badge className="bg-green-100 text-green-800 hover:bg-green-100">In Stock</Badge>
+                                                        ) : (
+                                                            <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">Out of Stock</Badge>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="font-medium">
+                                                        {String(item.inventory_id).padStart(3, '0')}
+                                                    </TableCell>
+                                                    <TableCell>{item.product_name}</TableCell>
+                                                    <TableCell className="capitalize">{item.size}</TableCell>
+                                                    <TableCell>₱{item.price}</TableCell>
+                                                    <TableCell className="font-medium">{item.quantity}</TableCell>
+                                                    <TableCell>09/12/25</TableCell>
+                                                    <TableCell>
+                                                        <Button
+                                                            onClick={() => handleUpdateStock(item)}
+                                                            size="sm"
+                                                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                                                        >
+                                                            Update Stocks
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                                                    {searchTerm ? `No inventory items found matching "${searchTerm}"` : 'No inventory items available'}
                                                 </TableCell>
                                             </TableRow>
-                                        ))}
+                                        )}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -677,21 +704,6 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                 />
                                 {addErrors.quantity && (
                                     <p className="text-sm text-red-600 mt-1">{addErrors.quantity}</p>
-                                )}
-                            </div>
-                            
-                            <div>
-                                <Label htmlFor="description">Description</Label>
-                                <textarea
-                                    id="description"
-                                    placeholder="Details"
-                                    value={addData.description}
-                                    onChange={(e) => setAddData('description', e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                                    rows={3}
-                                />
-                                {addErrors.description && (
-                                    <p className="text-sm text-red-600 mt-1">{addErrors.description}</p>
                                 )}
                             </div>
                             
@@ -834,6 +846,26 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                 title="Inventory Report"
                 description="Select date range to export inventory stock levels and transaction history."
             />
+
+            {/* Logout Confirmation Dialog */}
+            <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to sign in again to access your account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelLogout}>
+                            No, Stay Logged In
+                        </Button>
+                        <Button variant="destructive" onClick={confirmLogout}>
+                            Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

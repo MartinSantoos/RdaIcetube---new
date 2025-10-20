@@ -12,6 +12,17 @@ class IceSystemUserSeeder extends Seeder
      */
     public function run(): void
     {
+        // Create Jericho admin user
+        \App\Models\User::create([
+            'name' => 'Jericho',
+            'username' => 'jericho',
+            'email' => 'jericho@icesystem.com',
+            'password' => bcrypt('password'), // Default password
+            'user_type' => 1, // Admin
+            'position' => 'System Administrator',
+            'contact_number' => '09123456789',
+        ]);
+
         \App\Models\User::create([
             'name' => 'Administrator',
             'username' => 'mavs',

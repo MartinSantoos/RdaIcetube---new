@@ -1,12 +1,14 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { BarChart3, Package, Settings, ShoppingCart, Search, Download, Plus, Calendar, X, Users, LogOut, MoreHorizontal, Eye, CheckCircle, Menu } from 'lucide-react';
+import { BarChart3, Package, Settings, ShoppingCart, Search, Download, Plus, Calendar, X, Users, LogOut, MoreHorizontal, Eye, CheckCircle, Menu, AlertTriangle } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import DateFilterModal from '@/components/DateFilterModal';
+import { StatusBadge } from '@/components/enhanced/status-badge';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -69,10 +71,19 @@ interface EquipmentProps {
 export default function Equipment({ user, equipment = [] }: EquipmentProps) {
     const [showSuccess, setShowSuccess] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const isMobile = useIsMobile();
 
     const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
+    const confirmLogout = () => {
         router.post('/logout');
+    };
+
+    const cancelLogout = () => {
+        setIsLogoutModalOpen(false);
     };
 
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -94,15 +105,9 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
 
+    // Enhanced status badge using StatusBadge component
     const getStatusBadge = (status: string) => {
-        if (status === 'operational') {
-            return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">● Operational</Badge>;
-        } else if (status === 'under_maintenance') {
-            return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">● Under Maintenance</Badge>;
-        } else if (status === 'broken') {
-            return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">● Broken</Badge>;
-        }
-        return <Badge variant="outline">{status}</Badge>;
+        return <StatusBadge status={status} size="sm" />;
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -142,6 +147,18 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
             },
             onError: (errors) => {
                 console.error('Error marking equipment as operational:', errors);
+            }
+        });
+    };
+
+    const markAsBroken = (equipmentId: number) => {
+        // Mark equipment as broken using Inertia router
+        router.post(`/admin/equipment/${equipmentId}/mark-broken`, {}, {
+            onSuccess: () => {
+                console.log('Equipment marked as broken successfully');
+            },
+            onError: (errors) => {
+                console.error('Error marking equipment as broken:', errors);
             }
         });
     };
@@ -204,13 +221,6 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                         </div>
                     </div>
                     <div className="flex items-center space-x-2 md:space-x-4">
-                        <div className="hidden md:block relative">
-                            <input 
-                                type="text" 
-                                placeholder="Search" 
-                                className="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/30"
-                            />
-                        </div>
                         {isMobile && (
                             <div className="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">
                                 {user.name?.charAt(0) || 'A'}
@@ -433,17 +443,17 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                 <p className="text-blue-100">Manage your Equipment</p>
                             </div>
                             <div className="flex space-x-3">
-                                <Button variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100" onClick={() => setIsMaintenanceModalOpen(true)}>
+                                <Button variant="secondary" size="sm" onClick={() => setIsMaintenanceModalOpen(true)}>
                                     <Calendar className="h-4 w-4 mr-2" />
                                     Schedule Maintenance
                                 </Button>
-                                <Button variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100" onClick={() => setIsModalOpen(true)}>
+                                <Button variant="secondary" size="sm" onClick={() => setIsModalOpen(true)}>
                                     <Plus className="h-4 w-4 mr-2" />
                                     Add Equipment
                                 </Button>
                                 <Button 
                                     variant="secondary" 
-                                    className="bg-white text-blue-600 hover:bg-gray-100"
+                                    size="sm"
                                     onClick={() => setIsExportModalOpen(true)}
                                 >
                                     <Download className="h-4 w-4 mr-2" />
@@ -468,7 +478,7 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                 
                                 <TabsContent value="equipment" className="mt-6">
                                     {/* Search */}
-                                    <div className="flex justify-end mb-4">
+                                    <div className="flex justify-start mb-4">
                                         <div className="relative w-full md:w-64">
                                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                                             <Input
@@ -484,10 +494,10 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHead className="font-semibold">Status ↕</TableHead>
-                                                    <TableHead className="font-semibold">Equipment ID ↕</TableHead>
+                                                    <TableHead className="font-semibold">Status</TableHead>
+                                                    <TableHead className="font-semibold">Equipment ID</TableHead>
                                                     <TableHead className="font-semibold">Equipment Name</TableHead>
-                                                    <TableHead className="font-semibold">Type ↕</TableHead>
+                                                    <TableHead className="font-semibold">Type</TableHead>
                                                     <TableHead className="font-semibold">Actions</TableHead>
                                                 </TableRow>
                                             </TableHeader>
@@ -525,6 +535,24 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                                             >
                                                                                 <CheckCircle className="mr-2 h-4 w-4" />
                                                                                 Mark as Completed
+                                                                            </DropdownMenuItem>
+                                                                        )}
+                                                                        {item.status === 'broken' && (
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => markAsCompleted(item.id)}
+                                                                                className="text-green-600"
+                                                                            >
+                                                                                <CheckCircle className="mr-2 h-4 w-4" />
+                                                                                Mark as Operational
+                                                                            </DropdownMenuItem>
+                                                                        )}
+                                                                        {(item.status === 'operational' || item.status === 'under_maintenance') && (
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => markAsBroken(item.id)}
+                                                                                className="text-red-600"
+                                                                            >
+                                                                                <AlertTriangle className="mr-2 h-4 w-4" />
+                                                                                Mark as Broken
                                                                             </DropdownMenuItem>
                                                                         )}
                                                                     </DropdownMenuContent>
@@ -582,6 +610,28 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                                 >
                                                                     <CheckCircle className="mr-2 h-4 w-4" />
                                                                     Complete
+                                                                </Button>
+                                                            )}
+                                                            {item.status === 'broken' && (
+                                                                <Button 
+                                                                    variant="default" 
+                                                                    size="sm"
+                                                                    onClick={() => markAsCompleted(item.id)}
+                                                                    className="flex-1 bg-green-600 hover:bg-green-700"
+                                                                >
+                                                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                                                    Mark Operational
+                                                                </Button>
+                                                            )}
+                                                            {(item.status === 'operational' || item.status === 'under_maintenance') && (
+                                                                <Button 
+                                                                    variant="outline" 
+                                                                    size="sm"
+                                                                    onClick={() => markAsBroken(item.id)}
+                                                                    className="flex-1 border-red-500 text-red-600 hover:bg-red-50"
+                                                                >
+                                                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                                                    Mark Broken
                                                                 </Button>
                                                             )}
                                                         </div>
@@ -754,13 +804,16 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Maintenance Date
                                     </label>
-                                    <input
-                                        type="date"
-                                        value={maintenanceData.maintenance_date}
-                                        onChange={(e) => setMaintenanceData('maintenance_date', e.target.value)}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        required
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type="date"
+                                            value={maintenanceData.maintenance_date}
+                                            onChange={(e) => setMaintenanceData('maintenance_date', e.target.value)}
+                                            className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            required
+                                        />
+                                        <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+                                    </div>
                                     {maintenanceErrors.maintenance_date && (
                                         <p className="text-red-500 text-sm mt-1">{maintenanceErrors.maintenance_date}</p>
                                     )}
@@ -916,6 +969,7 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                             <div className="flex justify-end pt-4">
                                 <button onClick={() => {setIsViewDetailsModalOpen(false)}}
                                     className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
+                                    Close
                                 </button>
                             </div>
                         </div>
@@ -931,6 +985,26 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                 title="Equipment Report"
                 description="Select date range to export equipment maintenance records and status history."
             />
+
+            {/* Logout Confirmation Dialog */}
+            <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to sign in again to access your account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelLogout}>
+                            No, Stay Logged In
+                        </Button>
+                        <Button variant="destructive" onClick={confirmLogout}>
+                            Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

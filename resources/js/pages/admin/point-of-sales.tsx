@@ -1,11 +1,12 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { Search, Download, BarChart3, Package, Settings, ShoppingCart, MoreHorizontal, Check, X, Archive, Plus, Users, Printer, LogOut, Truck, Eye, RotateCcw, Menu } from 'lucide-react';
+import { Search, Download, BarChart3, Package, Settings, ShoppingCart, MoreHorizontal, Check, X, Archive, Plus, Users, Printer, LogOut, Truck, Eye, RotateCcw, Menu, Calendar } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { StatusBadge } from '@/components/enhanced/status-badge';
 import {
     Table,
     TableBody,
@@ -233,8 +234,6 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
             
             if (deliveryDate < today) {
                 errors.delivery_date = 'Delivery date cannot be in the past';
-            } else if (deliveryDate.getTime() === today.getTime()) {
-                errors.delivery_date = 'Delivery date must be after today';
             }
         }
         
@@ -248,21 +247,17 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        console.log('Form submission started with data:', data);
         setValidationErrors({});
         
         const errors = validateForm();
         
         if (Object.keys(errors).length > 0) {
-            console.log('Client-side validation errors:', errors);
             setValidationErrors(errors);
             return;
         }
         
-        console.log('Submitting to /admin/orders...');
         post('/admin/orders', {
             onSuccess: () => {
-                console.log('Order created successfully!');
                 reset();
                 setValidationErrors({});
                 setShowSuccess(true);
@@ -300,17 +295,9 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
         }
     }, [data.delivery_mode]);
 
+    // Enhanced status badge using StatusBadge component
     const getStatusBadge = (status: string) => {
-        if (status === 'pending') {
-            return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">● Pending</Badge>;
-        } else if (status === 'out_for_delivery') {
-            return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">● On Delivery</Badge>;
-        } else if (status === 'completed') {
-            return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">● Completed</Badge>;
-        } else if (status === 'cancelled') {
-            return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">● Cancelled</Badge>;
-        }
-        return <Badge variant="outline">{status}</Badge>;
+        return <StatusBadge status={status} size="sm" />;
     };
 
     const handleStatusUpdate = (orderId: number, newStatus: string) => {
@@ -770,21 +757,27 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         <div className="flex gap-4 items-end mt-4">
                                             <div>
                                                 <Label className="text-sm font-medium mb-2 block">Date From</Label>
-                                                <Input
-                                                    type="date"
-                                                    value={dateFromFilter}
-                                                    onChange={(e) => setDateFromFilter(e.target.value)}
-                                                    className="w-40"
-                                                />
+                                                <div className="relative">
+                                                    <Input
+                                                        type="date"
+                                                        value={dateFromFilter}
+                                                        onChange={(e) => setDateFromFilter(e.target.value)}
+                                                        className="w-40 pr-10"
+                                                    />
+                                                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                                </div>
                                             </div>
                                             <div>
                                                 <Label className="text-sm font-medium mb-2 block">Date To</Label>
-                                                <Input
-                                                    type="date"
-                                                    value={dateToFilter}
-                                                    onChange={(e) => setDateToFilter(e.target.value)}
-                                                    className="w-40"
-                                                />
+                                                <div className="relative">
+                                                    <Input
+                                                        type="date"
+                                                        value={dateToFilter}
+                                                        onChange={(e) => setDateToFilter(e.target.value)}
+                                                        className="w-40 pr-10"
+                                                    />
+                                                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                                </div>
                                             </div>
                                             <Button 
                                                 variant="outline" 
@@ -1012,21 +1005,27 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         <div className="flex gap-4 items-end mt-4">
                                             <div>
                                                 <Label className="text-sm font-medium mb-2 block">Date From</Label>
-                                                <Input
-                                                    type="date"
-                                                    value={dateFromFilter}
-                                                    onChange={(e) => setDateFromFilter(e.target.value)}
-                                                    className="w-40"
-                                                />
+                                                <div className="relative">
+                                                    <Input
+                                                        type="date"
+                                                        value={dateFromFilter}
+                                                        onChange={(e) => setDateFromFilter(e.target.value)}
+                                                        className="w-40 pr-10"
+                                                    />
+                                                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                                </div>
                                             </div>
                                             <div>
                                                 <Label className="text-sm font-medium mb-2 block">Date To</Label>
-                                                <Input
-                                                    type="date"
-                                                    value={dateToFilter}
-                                                    onChange={(e) => setDateToFilter(e.target.value)}
-                                                    className="w-40"
-                                                />
+                                                <div className="relative">
+                                                    <Input
+                                                        type="date"
+                                                        value={dateToFilter}
+                                                        onChange={(e) => setDateToFilter(e.target.value)}
+                                                        className="w-40 pr-10"
+                                                    />
+                                                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                                </div>
                                             </div>
                                             <Button 
                                                 variant="outline" 
@@ -1294,7 +1293,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                             <Input
                                                 id="order_date"
                                                 type="date"
-                                                placeholder="00/00/00"
+                                                placeholder="dd/mm/yyyy"
                                                 value={data.order_date}
                                                 onChange={(e) => setData('order_date', e.target.value)}
                                                 className={`w-full h-12 text-base bg-gray-100 ${validationErrors.order_date || errors.order_date ? 'border-red-500' : ''}`}
@@ -1308,15 +1307,18 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="delivery_date" className="text-sm text-gray-600">Delivery Date</Label>
-                                            <Input
-                                                id="delivery_date"
-                                                type="date"
-                                                placeholder="00/00/00"
-                                                value={data.delivery_date}
-                                                onChange={(e) => setData('delivery_date', e.target.value)}
-                                                className={`w-full h-12 text-base ${validationErrors.delivery_date || errors.delivery_date ? 'border-red-500' : ''}`}
-                                                min={getTodayDate()}
-                                            />
+                                            <div className="relative">
+                                                <Input
+                                                    id="delivery_date"
+                                                    type="date"
+                                                    placeholder="dd/mm/yyyy"
+                                                    value={data.delivery_date}
+                                                    onChange={(e) => setData('delivery_date', e.target.value)}
+                                                    className={`w-full h-12 text-base pr-10 ${validationErrors.delivery_date || errors.delivery_date ? 'border-red-500' : ''}`}
+                                                    min={getTodayDate()}
+                                                />
+                                                <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+                                            </div>
                                             {(validationErrors.delivery_date || errors.delivery_date) && (
                                                 <p className="text-sm text-red-600">
                                                     {validationErrors.delivery_date || (Array.isArray(errors.delivery_date) ? errors.delivery_date[0] : errors.delivery_date)}

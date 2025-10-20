@@ -251,9 +251,8 @@ export default function SettingsPage({ user }: SettingsProps) {
                         {/* Settings Forms */}
                         <div className="lg:col-span-3">
                             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                                <TabsList className="grid w-full grid-cols-2">
+                                <TabsList className="grid w-full grid-cols-1">
                                     <TabsTrigger value="account">Account</TabsTrigger>
-                                    <TabsTrigger value="settings">Settings</TabsTrigger>
                                 </TabsList>
 
                                 {/* Password Tab */}
@@ -333,19 +332,6 @@ export default function SettingsPage({ user }: SettingsProps) {
                                                 {passwordProcessing ? 'Saving Changes...' : 'Save Changes'}
                                             </Button>
                                         </form>
-                                    </div>
-                                </TabsContent>
-
-                                {/* Settings Tab - Future use */}
-                                <TabsContent value="settings" className="space-y-6">
-                                    <div className="bg-white rounded-xl p-6 shadow-sm">
-                                        <h3 className="text-xl font-semibold mb-1">General Settings</h3>
-                                        <p className="text-gray-600 mb-6">Configure application preferences</p>
-                                        
-                                        <div className="text-center py-12">
-                                            <Settings className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                                            <p className="text-gray-500">Additional settings will be available here in future updates.</p>
-                                        </div>
                                     </div>
                                 </TabsContent>
                             </Tabs>

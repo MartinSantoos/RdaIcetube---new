@@ -247,7 +247,7 @@ export default function ArchivedEmployees({ user, archivedEmployees }: Props) {
                           <Badge variant="outline">{employee.position}</Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={employee.status === 'active' ? 'default' : 'secondary'}>
+                          <Badge className={employee.status === 'active' ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-800'}>
                             {employee.status}
                           </Badge>
                         </TableCell>
@@ -300,7 +300,7 @@ export default function ArchivedEmployees({ user, archivedEmployees }: Props) {
             <Button variant="outline" onClick={() => setShowRestoreDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleRestore} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={handleRestore} variant="default">
               <RotateCcw className="h-4 w-4 mr-2" />
               Restore Employee
             </Button>
@@ -333,7 +333,7 @@ export default function ArchivedEmployees({ user, archivedEmployees }: Props) {
             </Button>
             <Button 
               onClick={handlePermanentDelete} 
-              className="bg-red-600 hover:bg-red-700 text-white"
+              variant="destructive"
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Permanently Delete
