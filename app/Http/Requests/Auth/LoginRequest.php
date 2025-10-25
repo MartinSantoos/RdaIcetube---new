@@ -73,6 +73,15 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        // Check if the user is active before attempting authentication
+        if ($user->status !== 'active') {
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'username' => 'This account is currently inactive. Please contact an administrator.',
+            ]);
+        }
+
         // Attempt authentication with the correct username
         if (! Auth::attempt($this->only('username', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());

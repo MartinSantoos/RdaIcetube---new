@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { Search, Download, BarChart3, Package, Settings, ShoppingCart, MoreHorizontal, Check, X, Archive, Plus, Users, Printer, LogOut, Truck, Eye, RotateCcw, Menu, Calendar } from 'lucide-react';
+import { Search, Download, BarChart3, Package, Settings, ShoppingCart, MoreHorizontal, Check, X, Archive, Plus, Users, Printer, LogOut, Truck, Eye, RotateCcw, Menu, Calendar, Trash2 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,8 @@ import {
     DialogHeader,
     DialogTitle,
     DialogTrigger,
+    DialogDescription,
+    DialogFooter,
 } from '@/components/ui/dialog';
 import {
     Select,
@@ -80,6 +82,7 @@ interface DeliveryRider {
 }
 
 interface InventoryItem {
+    product_name: string;
     size: string;
     price: number;
     status: string;
@@ -98,6 +101,8 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
     const [isOrderDetailsModalOpen, setIsOrderDetailsModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -108,10 +113,56 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     const [dateFromFilter, setDateFromFilter] = useState('');
     const [dateToFilter, setDateToFilter] = useState('');
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const isMobile = useIsMobile();
     
+    // CSS for custom radio button styling
+    const radioButtonStyles = `
+        .custom-radio {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid #d1d5db;
+            background-color: white;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .custom-radio:checked {
+            border-color: #3b82f6;
+            background-color: #3b82f6;
+        }
+        
+        .custom-radio:checked::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: white;
+        }
+        
+        .custom-radio:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px #3b82f6;
+        }
+    `;
+    
     const handleLogout = () => {
+        setIsLogoutModalOpen(true);
+    };
+
+    const confirmLogout = () => {
         router.post('/logout');
+    };
+
+    const cancelLogout = () => {
+        setIsLogoutModalOpen(false);
     };
 
     const getTodayDate = () => {
@@ -135,7 +186,13 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     useEffect(() => {
         if (data.quantity && data.size) {
             const requestedQuantity = parseInt(data.quantity);
-            const selectedItem = inventory.find(item => item.size === data.size);
+            // Parse the selected value to get product_name and size (split on last hyphen)
+            const lastHyphenIndex = data.size.lastIndexOf('-');
+            const productName = lastHyphenIndex > -1 ? data.size.substring(0, lastHyphenIndex) : '';
+            const size = lastHyphenIndex > -1 ? data.size.substring(lastHyphenIndex + 1) : data.size;
+            const selectedItem = inventory.find(item => 
+                item.product_name === productName && item.size === size
+            );
             
             if (selectedItem && selectedItem.quantity < requestedQuantity) {
                 setData('size', '');
@@ -147,7 +204,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     const isQuantityTooHigh = useMemo(() => {
         if (!data.quantity || !inventory || !Array.isArray(inventory)) return false;
         
-        const availableInventory = inventory.filter(item => item && item.status === 'available' && item.quantity > 0);
+        const availableInventory = inventory.filter(item => item && item.quantity > 0);
         if (availableInventory.length === 0) return false;
         
         const requestedQuantity = parseInt(data.quantity);
@@ -161,7 +218,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     const maxStock = useMemo(() => {
         if (!inventory || !Array.isArray(inventory)) return 0;
         
-        const availableInventory = inventory.filter(item => item && item.status === 'available' && item.quantity > 0);
+        const availableInventory = inventory.filter(item => item && item.status === 'available' && item.quantity >= 0);
         if (availableInventory.length === 0) return 0;
         return Math.max(...availableInventory.map(item => item.quantity));
     }, [inventory]);
@@ -175,7 +232,16 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
             }
             
             if (!data.quantity || data.quantity === '') {
-                return inventory.filter(item => item && item.status === 'available' && item.quantity > 0) || [];
+                const items = inventory.filter(item => item && (item.status === 'available' || item.status === 'critical') && item.quantity >= 0) || [];
+                // Group by product_name + size combination to allow different products with same size
+                const uniqueItems = new Map();
+                items.forEach(item => {
+                    const key = `${item.product_name}-${item.size}`;
+                    if (!uniqueItems.has(key)) {
+                        uniqueItems.set(key, item);
+                    }
+                });
+                return Array.from(uniqueItems.values());
             }
             
             const requestedQuantity = parseInt(data.quantity);
@@ -183,12 +249,21 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
             
             const filtered = inventory.filter(item => {
                 return item && 
-                       item.status === 'available' && 
-                       item.quantity > 0 && 
+                       (item.status === 'available' || item.status === 'critical') && 
+                       item.quantity >= 0 && 
                        item.quantity >= requestedQuantity;
             }) || [];
             
-            return filtered;
+            // Group by product_name + size combination to allow different products with same size
+            const uniqueItems = new Map();
+            filtered.forEach(item => {
+                const key = `${item.product_name}-${item.size}`;
+                if (!uniqueItems.has(key)) {
+                    uniqueItems.set(key, item);
+                }
+            });
+            
+            return Array.from(uniqueItems.values());
         } catch (error) {
             console.error('Error in availableItems calculation:', error);
             return [];
@@ -255,8 +330,20 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
             setValidationErrors(errors);
             return;
         }
+
+        // Extract just the size from the combined product_name-size value (split on last hyphen)
+        const lastHyphenIndex = data.size.lastIndexOf('-');
+        const productName = lastHyphenIndex > -1 ? data.size.substring(0, lastHyphenIndex) : '';
+        const size = lastHyphenIndex > -1 ? data.size.substring(lastHyphenIndex + 1) : data.size;
         
-        post('/admin/orders', {
+        // Create submit data with just the size
+        const submitData = {
+            ...data,
+            size: size
+        };
+        
+        // Submit the form with the corrected size
+        router.post('/admin/orders', submitData, {
             onSuccess: () => {
                 reset();
                 setValidationErrors({});
@@ -267,7 +354,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                     setShowSuccess(false);
                 }, 3000);
             },
-            onError: (errors) => {
+            onError: (errors: any) => {
                 console.error('Order submission errors:', errors);
                 setValidationErrors(errors);
             }
@@ -300,7 +387,34 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
         return <StatusBadge status={status} size="sm" />;
     };
 
+    // Check if user can complete a delivery order
+    const canCompleteDeliveryOrder = (order: Order) => {
+        // If it's not a delivery order, anyone can complete it
+        if (order.delivery_mode !== 'deliver') {
+            return true;
+        }
+        
+        // For delivery orders, only the assigned delivery rider can complete it
+        // Admin (user_type 0 or 1) cannot complete delivery orders
+        if (user.user_type === 0 || user.user_type === 1) {
+            return false;
+        }
+        
+        // Employee (user_type 2) can only complete if they are the assigned delivery rider
+        return order.delivery_rider_id === user.id;
+    };
+
     const handleStatusUpdate = (orderId: number, newStatus: string) => {
+        // If trying to complete an order, check permissions
+        if (newStatus === 'completed') {
+            const order = orders.find(o => o.order_id === orderId);
+            if (order && !canCompleteDeliveryOrder(order)) {
+                // Show error message or prevent action
+                alert('Only the assigned delivery rider can complete delivery orders.');
+                return;
+            }
+        }
+        
         router.patch(`/admin/orders/${orderId}/status`, {
             status: newStatus,
         }, {
@@ -320,6 +434,29 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
         router.patch(`/admin/orders/${order.order_id}/restore`, {}, {
             preserveScroll: true,
         });
+    };
+
+    // Delete order permanently function
+    const handleDeleteOrder = (order: Order) => {
+        setOrderToDelete(order);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDeleteOrder = () => {
+        if (orderToDelete) {
+            router.delete(`/admin/orders/${orderToDelete.order_id}/force-delete`, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsDeleteModalOpen(false);
+                    setOrderToDelete(null);
+                }
+            });
+        }
+    };
+
+    const cancelDeleteOrder = () => {
+        setIsDeleteModalOpen(false);
+        setOrderToDelete(null);
     };
 
     const handleViewReceipt = (order: Order) => {
@@ -429,9 +566,10 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     return (
         <div className="min-h-screen bg-gray-50">
             <Head title="Order - RDA Tube Ice" />
+            <style dangerouslySetInnerHTML={{ __html: radioButtonStyles }} />
             
             {/* Header */}
-            <header className="bg-blue-600 text-white shadow-lg relative z-50">
+            <header className="bg-blue-600 text-white shadow-lg sticky top-0 z-50">
                 <div className="flex items-center justify-between px-4 md:px-6 py-4">
                     <div className="flex items-center space-x-4">
                         <button
@@ -465,23 +603,40 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                 {isMobile && sidebarOpen && (
                     <div 
                         className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 40 }}
                         onClick={() => setSidebarOpen(false)}
                     />
                 )}
                 
-                {/* Sidebar - Hidden on mobile by default, shown on desktop */}
-                <aside className="
-                    w-64 bg-blue-600 text-white min-h-screen
-                    hidden md:block
-                ">
-                    {/* Desktop sidebar content */}
+                
+                {/* Sidebar */}
+                <aside className={`
+                    ${isMobile 
+                        ? `fixed top-0 left-0 z-50 w-64 h-full bg-blue-600 transform transition-transform duration-300 ease-in-out ${
+                            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                        }` 
+                        : 'fixed top-16 left-0 z-40 w-64 h-[calc(100vh-4rem)] bg-blue-600 overflow-y-auto'
+                    } text-white
+                `}>
                     <div className="p-6">
+                        {isMobile && (
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-lg font-semibold">Menu</h2>
+                                <button
+                                    onClick={() => setSidebarOpen(false)}
+                                    className="p-2 rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        )}
                         <div className="mb-8">
-                            <h2 className="text-lg font-semibold mb-4">Menu</h2>
+                            {!isMobile && <h2 className="text-lg font-semibold mb-4">Menu</h2>}
                             <nav className="space-y-2">
                                 <Link 
                                     href="/admin/dashboard" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <BarChart3 className="w-5 h-5" />
                                     <span>Dashboard</span>
@@ -489,6 +644,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                 <Link 
                                     href="/admin/point-of-sales" 
                                     className="flex items-center space-x-3 bg-blue-700 px-4 py-3 rounded-lg"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <ShoppingCart className="w-5 h-5" />
                                     <span>Order</span>
@@ -496,6 +652,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                 <Link 
                                     href="/admin/inventory" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <Package className="w-5 h-5" />
                                     <span>Inventory</span>
@@ -503,6 +660,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                 <Link 
                                     href="/admin/employees" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <Users className="w-5 h-5" />
                                     <span>Employees</span>
@@ -510,6 +668,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                 <Link 
                                     href="/admin/equipment" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <Settings className="w-5 h-5" />
                                     <span>Equipment</span>
@@ -517,6 +676,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                 <Link 
                                     href="/admin/sales-report" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <BarChart3 className="w-5 h-5" />
                                     <span>Sales Report</span>
@@ -530,12 +690,16 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                 <Link 
                                     href="/admin/settings" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <Settings className="w-5 h-5" />
                                     <span>Settings</span>
                                 </Link>
                                 <button 
-                                    onClick={handleLogout}
+                                    onClick={() => {
+                                        isMobile && setSidebarOpen(false);
+                                        handleLogout();
+                                    }}
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors w-full text-left"
                                 >
                                     <LogOut className="w-5 h-5" />
@@ -546,112 +710,13 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                     </div>
                 </aside>
 
-                {/* Mobile Sidebar - Only shown when sidebarOpen is true */}
-                {sidebarOpen && (
-                    <aside className="
-                        fixed inset-y-0 left-0 z-50 w-64 
-                        bg-blue-600 text-white
-                        transform translate-x-0 
-                        transition-transform duration-300 ease-in-out
-                        md:hidden
-                    ">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-lg font-semibold">Menu</h2>
-                                <button
-                                    onClick={() => setSidebarOpen(false)}
-                                    className="p-2 rounded-lg hover:bg-blue-700 transition-colors"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-                            <div className="mb-8">
-                                <nav className="space-y-2">
-                                    <Link 
-                                        href="/admin/dashboard" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <BarChart3 className="w-5 h-5" />
-                                        <span>Dashboard</span>
-                                    </Link>
-                                    <Link 
-                                        href="/admin/point-of-sales" 
-                                        className="flex items-center space-x-3 bg-blue-700 px-4 py-3 rounded-lg"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <ShoppingCart className="w-5 h-5" />
-                                        <span>Order</span>
-                                    </Link>
-                                    <Link 
-                                        href="/admin/inventory" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <Package className="w-5 h-5" />
-                                        <span>Inventory</span>
-                                    </Link>
-                                    <Link 
-                                        href="/admin/employees" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <Users className="w-5 h-5" />
-                                        <span>Employees</span>
-                                    </Link>
-                                    <Link 
-                                        href="/admin/equipment" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <Settings className="w-5 h-5" />
-                                        <span>Equipment</span>
-                                    </Link>
-                                    <Link 
-                                        href="/admin/sales-report" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <BarChart3 className="w-5 h-5" />
-                                        <span>Sales Report</span>
-                                    </Link>
-                                </nav>
-                            </div>
-
-                            <div className="border-t border-blue-500 pt-6">
-                                <h3 className="text-sm font-semibold mb-4">Settings</h3>
-                                <nav className="space-y-2">
-                                    <Link 
-                                        href="/admin/settings" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <Settings className="w-5 h-5" />
-                                        <span>Settings</span>
-                                    </Link>
-                                    <button 
-                                        onClick={() => {
-                                            setSidebarOpen(false);
-                                            handleLogout();
-                                        }}
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors w-full text-left"
-                                    >
-                                        <LogOut className="w-5 h-5" />
-                                        <span>Log out</span>
-                                    </button>
-                                </nav>
-                            </div>
-                        </div>
-                    </aside>
-                )}
-
                 {/* Main Content */}
-                <main className={`flex-1 p-4 md:p-8 ${isMobile ? 'w-full' : ''}`}>
+                <main className={`flex-1 p-2 sm:p-4 md:p-8 ${isMobile ? 'w-full' : 'ml-64'}`}>
                     {/* Page Header */}
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div>
-                                <h1 className="text-2xl md:text-3xl font-bold mb-2">Order</h1>
+                                <h1 className="text-2xl md:text-3xl font-bold mb-2">Orders</h1>
                                 <p className="text-blue-100 text-sm md:text-base">Manage and track Orders</p>
                             </div>
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
@@ -663,10 +728,6 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         </Button>
                                     </DialogTrigger>
                                 </Dialog>
-                                <Button variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 text-sm md:text-base">
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Export
-                                </Button>
                             </div>
                         </div>
                     </div>
@@ -675,86 +736,112 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                     <div className="bg-white rounded-lg shadow">
                         {/* Orders Section */}
                         <div className="p-6">
-                            <h3 className="text-lg font-semibold mb-4">Orders</h3>
+                            <h3 className="text-lg font-semibold mb-4 text-gray-900">Orders</h3>
                             
                             {/* Tabs */}
                             <Tabs defaultValue="orders" className="mb-6">
-                                <TabsList className="grid w-fit grid-cols-2">
-                                    <TabsTrigger value="orders">Orders</TabsTrigger>
-                                    <TabsTrigger value="archives">Archives</TabsTrigger>
+                                <TabsList className="grid w-fit grid-cols-2 bg-gray-200 p-1 rounded-xl h-12">
+                                    <TabsTrigger 
+                                        value="orders" 
+                                        className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                    >
+                                        Orders
+                                    </TabsTrigger>
+                                    <TabsTrigger 
+                                        value="archives" 
+                                        className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                    >
+                                        Archives
+                                    </TabsTrigger>
                                 </TabsList>
                                 
                                 <TabsContent value="orders" className="mt-6">
                                     {/* Filters Section */}
                                     <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                                        <div className="flex flex-wrap gap-4 items-end">
-                                            {/* Search */}
-                                            <div className="flex-1 min-w-64">
-                                                <Label className="text-sm font-medium mb-2 block">Search</Label>
-                                                <div className="relative">
-                                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                                                    <Input
-                                                        type="search"
-                                                        placeholder="Search by customer, order ID, contact, or address"
-                                                        value={searchTerm}
-                                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                                        className="pl-10"
-                                                    />
-                                                </div>
+                                        {/* Search - Full width on mobile */}
+                                        <div className="mb-4">
+                                            <Label className="text-sm font-medium mb-2 block">Search</Label>
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                                <Input
+                                                    type="search"
+                                                    placeholder="Search by customer, order ID, contact, or address"
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    className="pl-10 w-full"
+                                                />
                                             </div>
+                                        </div>
 
+                                        {/* Filter Controls */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                                             {/* Status Filter */}
                                             <div>
-                                                <Label className="text-sm font-medium mb-2 block">Status</Label>
-                                                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                                    <SelectTrigger className="w-32">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">All Status</SelectItem>
-                                                        <SelectItem value="pending">Pending</SelectItem>
-                                                        <SelectItem value="completed">Completed</SelectItem>
-                                                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
+                                                <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                                <select 
+                                                    id="status-filter"
+                                                    value={statusFilter} 
+                                                    onChange={e => setStatusFilter(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    style={{ 
+                                                        color: '#111827', 
+                                                        backgroundColor: 'white',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                >
+                                                    <option value="all" style={{ color: '#111827', backgroundColor: 'white' }}>All Status</option>
+                                                    <option value="pending" style={{ color: '#111827', backgroundColor: 'white' }}>Pending</option>
+                                                    <option value="completed" style={{ color: '#111827', backgroundColor: 'white' }}>Completed</option>
+                                                    <option value="cancelled" style={{ color: '#111827', backgroundColor: 'white' }}>Cancelled</option>
+                                                </select>
                                             </div>
 
                                             {/* Delivery Mode Filter */}
                                             <div>
-                                                <Label className="text-sm font-medium mb-2 block">Delivery Mode</Label>
-                                                <Select value={deliveryModeFilter} onValueChange={setDeliveryModeFilter}>
-                                                    <SelectTrigger className="w-36">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">All Modes</SelectItem>
-                                                        <SelectItem value="pick_up">Pick Up</SelectItem>
-                                                        <SelectItem value="deliver">Deliver</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
+                                                <label htmlFor="delivery-mode-filter" className="block text-sm font-medium text-gray-700 mb-2">Delivery Mode</label>
+                                                <select 
+                                                    id="delivery-mode-filter"
+                                                    value={deliveryModeFilter} 
+                                                    onChange={e => setDeliveryModeFilter(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    style={{ 
+                                                        color: '#111827', 
+                                                        backgroundColor: 'white',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                >
+                                                    <option value="all" style={{ color: '#111827', backgroundColor: 'white' }}>All Modes</option>
+                                                    <option value="pick_up" style={{ color: '#111827', backgroundColor: 'white' }}>Pick Up</option>
+                                                    <option value="deliver" style={{ color: '#111827', backgroundColor: 'white' }}>Deliver</option>
+                                                </select>
                                             </div>
 
                                             {/* Size Filter */}
                                             <div>
-                                                <Label className="text-sm font-medium mb-2 block">Size</Label>
-                                                <Select value={sizeFilter} onValueChange={setSizeFilter}>
-                                                    <SelectTrigger className="w-32">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">All Sizes</SelectItem>
-                                                        {[...new Set(inventory.map(item => item.size))].sort().map((size) => (
-                                                            <SelectItem key={size} value={size}>
-                                                                {size.charAt(0).toUpperCase() + size.slice(1)}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                <label htmlFor="size-filter" className="block text-sm font-medium text-gray-700 mb-2">Size</label>
+                                                <select 
+                                                    id="size-filter"
+                                                    value={sizeFilter} 
+                                                    onChange={e => setSizeFilter(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    style={{ 
+                                                        color: '#111827', 
+                                                        backgroundColor: 'white',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                >
+                                                    <option value="all" style={{ color: '#111827', backgroundColor: 'white' }}>All Sizes</option>
+                                                    {[...new Set(inventory.map(item => item.size))].sort().map((size) => (
+                                                        <option key={size} value={size} style={{ color: '#111827', backgroundColor: 'white' }}>
+                                                            {size.charAt(0).toUpperCase() + size.slice(1)}
+                                                        </option>
+                                                    ))}
+                                                </select>
                                             </div>
                                         </div>
 
                                         {/* Date Range Filters */}
-                                        <div className="flex gap-4 items-end mt-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                                             <div>
                                                 <Label className="text-sm font-medium mb-2 block">Date From</Label>
                                                 <div className="relative">
@@ -762,7 +849,15 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                         type="date"
                                                         value={dateFromFilter}
                                                         onChange={(e) => setDateFromFilter(e.target.value)}
-                                                        className="w-40 pr-10"
+                                                        onClick={(e) => {
+                                                            try {
+                                                                (e.target as HTMLInputElement).showPicker();
+                                                            } catch (error) {
+                                                                // Fallback for browsers that don't support showPicker
+                                                                console.log('showPicker not supported');
+                                                            }
+                                                        }}
+                                                        className="w-full pr-10"
                                                     />
                                                     <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                                 </div>
@@ -774,18 +869,28 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                         type="date"
                                                         value={dateToFilter}
                                                         onChange={(e) => setDateToFilter(e.target.value)}
-                                                        className="w-40 pr-10"
+                                                        onClick={(e) => {
+                                                            try {
+                                                                (e.target as HTMLInputElement).showPicker();
+                                                            } catch (error) {
+                                                                // Fallback for browsers that don't support showPicker
+                                                                console.log('showPicker not supported');
+                                                            }
+                                                        }}
+                                                        className="w-full pr-10"
                                                     />
                                                     <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                                 </div>
                                             </div>
-                                            <Button 
-                                                variant="outline" 
-                                                onClick={clearAllFilters}
-                                                className="mb-0"
-                                            >
-                                                Clear Filters
-                                            </Button>
+                                            <div className="sm:flex sm:items-end">
+                                                <Button 
+                                                    variant="outline" 
+                                                    onClick={clearAllFilters}
+                                                    className="w-full sm:w-auto"
+                                                >
+                                                    Clear Filters
+                                                </Button>
+                                            </div>
                                         </div>
                                         
                                         {/* Results Counter */}
@@ -794,24 +899,27 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         </div>
                                     </div>
 
-                                    {/* Orders Table */}
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead className="font-semibold">Status</TableHead>
-                                                <TableHead className="font-semibold">Order ID</TableHead>
-                                                <TableHead className="font-semibold">Customer</TableHead>
-                                                <TableHead className="font-semibold">Address</TableHead>
-                                                <TableHead className="font-semibold">Size</TableHead>
-                                                <TableHead className="font-semibold">Quantity</TableHead>
-                                                <TableHead className="font-semibold">Delivery Mode</TableHead>
-                                                <TableHead className="font-semibold">Order Date</TableHead>
-                                                <TableHead className="font-semibold">Delivery Date</TableHead>
-                                                <TableHead className="font-semibold">Total</TableHead>
-                                                <TableHead className="font-semibold">Actions</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
+                                    {/* Orders Display - Responsive Design */}
+                                    {/* Desktop Table View */}
+                                    <div className="hidden md:block">
+                                        <div className="overflow-x-auto">
+                                            <Table className="min-w-full">
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead className="font-semibold w-20">Status</TableHead>
+                                                        <TableHead className="font-semibold w-16">Order ID</TableHead>
+                                                        <TableHead className="font-semibold w-32">Customer</TableHead>
+                                                        <TableHead className="font-semibold w-40">Address</TableHead>
+                                                        <TableHead className="font-semibold w-16">Size</TableHead>
+                                                        <TableHead className="font-semibold w-16">Quantity</TableHead>
+                                                        <TableHead className="font-semibold w-24">Delivery Mode</TableHead>
+                                                        <TableHead className="font-semibold w-24">Order Date</TableHead>
+                                                        <TableHead className="font-semibold w-24">Delivery Date</TableHead>
+                                                        <TableHead className="font-semibold w-24">Total</TableHead>
+                                                        <TableHead className="font-semibold w-20">Actions</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                            <TableBody>
                                             {filteredOrders.length > 0 ? (
                                                 filteredOrders.map((order) => (
                                                     <TableRow key={order.order_id}>
@@ -819,14 +927,14 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                             {getStatusBadge(order.status)}
                                                         </TableCell>
                                                         <TableCell className="font-medium">{order.order_id}</TableCell>
-                                                        <TableCell>{order.customer_name}</TableCell>
-                                                        <TableCell className="max-w-xs truncate" title={order.address}>{order.address}</TableCell>
+                                                        <TableCell className="max-w-32 truncate" title={order.customer_name}>{order.customer_name}</TableCell>
+                                                        <TableCell className="max-w-40 truncate" title={order.address}>{order.address}</TableCell>
                                                         <TableCell className="capitalize">{order.size}</TableCell>
                                                         <TableCell>{order.quantity}</TableCell>
-                                                        <TableCell className="capitalize">{order.delivery_mode.replace('_', ' ')}</TableCell>
-                                                        <TableCell>{formatDate(order.order_date)}</TableCell>
-                                                        <TableCell>{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</TableCell>
-                                                        <TableCell className="font-medium">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</TableCell>
+                                                        <TableCell className="capitalize text-sm">{order.delivery_mode.replace('_', ' ')}</TableCell>
+                                                        <TableCell className="text-sm">{formatDate(order.order_date)}</TableCell>
+                                                        <TableCell className="text-sm">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</TableCell>
+                                                        <TableCell className="font-medium text-sm">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</TableCell>
                                                         <TableCell>
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
@@ -844,13 +952,15 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                                 <Eye className="h-4 w-4 mr-2 text-blue-600" />
                                                                                 View Details
                                                                             </DropdownMenuItem>
-                                                                            <DropdownMenuItem
-                                                                                onClick={() => handleStatusUpdate(order.order_id, 'completed')}
-                                                                                className="cursor-pointer"
-                                                                            >
-                                                                                <Check className="h-4 w-4 mr-2 text-green-600" />
-                                                                                Mark as Completed
-                                                                            </DropdownMenuItem>
+                                                                            {canCompleteDeliveryOrder(order) && (
+                                                                                <DropdownMenuItem
+                                                                                    onClick={() => handleStatusUpdate(order.order_id, 'completed')}
+                                                                                    className="cursor-pointer"
+                                                                                >
+                                                                                    <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                                                    Mark as Completed
+                                                                                </DropdownMenuItem>
+                                                                            )}
                                                                             <DropdownMenuItem
                                                                                 onClick={() => handleStatusUpdate(order.order_id, 'cancelled')}
                                                                                 className="cursor-pointer"
@@ -875,20 +985,6 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                             >
                                                                                 <Printer className="h-4 w-4 mr-2 text-blue-600" />
                                                                                 View Receipt
-                                                                            </DropdownMenuItem>
-                                                                            <DropdownMenuItem
-                                                                                onClick={() => handleStatusUpdate(order.order_id, 'completed')}
-                                                                                className="cursor-pointer"
-                                                                            >
-                                                                                <Check className="h-4 w-4 mr-2 text-green-600" />
-                                                                                Mark as Completed
-                                                                            </DropdownMenuItem>
-                                                                            <DropdownMenuItem
-                                                                                onClick={() => handleStatusUpdate(order.order_id, 'cancelled')}
-                                                                                className="cursor-pointer"
-                                                                            >
-                                                                                <X className="h-4 w-4 mr-2 text-red-600" />
-                                                                                Mark as Cancelled
                                                                             </DropdownMenuItem>
                                                                         </>
                                                                     )}
@@ -931,78 +1027,233 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                             )}
                                         </TableBody>
                                     </Table>
+                                        </div>
+                                    </div>
+
+                                {/* Mobile Card View */}
+                                <div className="md:hidden space-y-4">
+                                    {filteredOrders.length > 0 ? (
+                                        filteredOrders.map((order) => (
+                                            <div key={order.order_id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <div className="font-medium text-sm text-gray-800">Order #{order.order_id}</div>
+                                                        <div className="font-semibold text-lg text-gray-900">{order.customer_name}</div>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        {getStatusBadge(order.status)}
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                                    <MoreHorizontal className="h-4 w-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                {order.status === 'pending' && (
+                                                                    <>
+                                                                        <DropdownMenuItem
+                                                                            onClick={() => handleViewOrderDetails(order)}
+                                                                            className="cursor-pointer"
+                                                                        >
+                                                                            <Eye className="h-4 w-4 mr-2 text-blue-600" />
+                                                                            View Details
+                                                                        </DropdownMenuItem>
+                                                                        {canCompleteDeliveryOrder(order) && (
+                                                                            <DropdownMenuItem
+                                                                                onClick={() => handleStatusUpdate(order.order_id, 'completed')}
+                                                                                className="cursor-pointer"
+                                                                            >
+                                                                                <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                                                Mark as Completed
+                                                                            </DropdownMenuItem>
+                                                                        )}
+                                                                        <DropdownMenuItem
+                                                                            onClick={() => handleStatusUpdate(order.order_id, 'cancelled')}
+                                                                            className="cursor-pointer"
+                                                                        >
+                                                                            <X className="h-4 w-4 mr-2 text-red-600" />
+                                                                            Cancel Order
+                                                                        </DropdownMenuItem>
+                                                                    </>
+                                                                )}
+                                                                {order.status === 'out_for_delivery' && (
+                                                                    <>
+                                                                        <DropdownMenuItem
+                                                                            onClick={() => handleViewOrderDetails(order)}
+                                                                            className="cursor-pointer"
+                                                                        >
+                                                                            <Eye className="h-4 w-4 mr-2 text-blue-600" />
+                                                                            View Details
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem 
+                                                                            className="cursor-pointer"
+                                                                            onClick={() => handleViewReceipt(order)}
+                                                                        >
+                                                                            <Printer className="h-4 w-4 mr-2 text-blue-600" />
+                                                                            View Receipt
+                                                                        </DropdownMenuItem>
+                                                                    </>
+                                                                )}
+                                                                {(order.status === 'completed' || order.status === 'cancelled') && (
+                                                                    <>
+                                                                        <DropdownMenuItem
+                                                                            onClick={() => handleViewOrderDetails(order)}
+                                                                            className="cursor-pointer"
+                                                                        >
+                                                                            <Eye className="h-4 w-4 mr-2 text-blue-600" />
+                                                                            View Details
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem 
+                                                                            className="cursor-pointer"
+                                                                            onClick={() => handleViewReceipt(order)}
+                                                                        >
+                                                                            <Printer className="h-4 w-4 mr-2 text-blue-600" />
+                                                                            View Receipt
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem 
+                                                                            className="cursor-pointer"
+                                                                            onClick={() => handleArchiveOrder(order)}
+                                                                        >
+                                                                            <Archive className="h-4 w-4 mr-2 text-gray-600" />
+                                                                            Archive Order
+                                                                        </DropdownMenuItem>
+                                                                    </>
+                                                                )}
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </div>
+
+                                                
+                                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                                    <div>
+                                                        <span className="text-gray-800">Address:</span>
+                                                        <div className="font-medium text-gray-900">{order.address}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-800">Size:</span>
+                                                        <div className="font-medium text-gray-900 capitalize">{order.size}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-800">Quantity:</span>
+                                                        <div className="font-medium text-gray-900">{order.quantity}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-800">Delivery:</span>
+                                                        <div className="font-medium text-gray-900 capitalize">{order.delivery_mode.replace('_', ' ')}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-800">Order Date:</span>
+                                                        <div className="font-medium text-gray-900">{formatDate(order.order_date)}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-800">Delivery Date:</span>
+                                                        <div className="font-medium text-gray-900">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-gray-800 text-sm font-medium">Total Amount</span>
+                                                        <span className="font-bold text-lg text-green-700">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-8 text-gray-800">
+                                            No orders found matching the current filters.
+                                        </div>
+                                    )}
+                                </div>
                                 </TabsContent>
                                 
                                 <TabsContent value="archives" className="mt-6">
                                     {/* Filters Section for Archives */}
                                     <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                                        <div className="flex flex-wrap gap-4 items-end">
-                                            {/* Search */}
-                                            <div className="flex-1 min-w-64">
-                                                <Label className="text-sm font-medium mb-2 block">Search</Label>
-                                                <div className="relative">
-                                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                                                    <Input
-                                                        type="search"
-                                                        placeholder="Search by customer, order ID, contact, or address"
-                                                        value={searchTerm}
-                                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                                        className="pl-10"
-                                                    />
-                                                </div>
+                                        {/* Search - Full width on mobile */}
+                                        <div className="mb-4">
+                                            <Label className="text-sm font-medium mb-2 block">Search</Label>
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                                <Input
+                                                    type="search"
+                                                    placeholder="Search by customer, order ID, contact, or address"
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    className="pl-10 w-full"
+                                                />
                                             </div>
+                                        </div>
 
+                                        {/* Filter Controls */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                                             {/* Status Filter */}
                                             <div>
-                                                <Label className="text-sm font-medium mb-2 block">Status</Label>
-                                                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                                    <SelectTrigger className="w-32">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">All Status</SelectItem>
-                                                        <SelectItem value="completed">Completed</SelectItem>
-                                                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
+                                                <label htmlFor="archives-status-filter" className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                                <select 
+                                                    id="archives-status-filter"
+                                                    value={statusFilter} 
+                                                    onChange={e => setStatusFilter(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    style={{ 
+                                                        color: '#111827', 
+                                                        backgroundColor: 'white',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                >
+                                                    <option value="all" style={{ color: '#111827', backgroundColor: 'white' }}>All Status</option>
+                                                    <option value="completed" style={{ color: '#111827', backgroundColor: 'white' }}>Completed</option>
+                                                    <option value="cancelled" style={{ color: '#111827', backgroundColor: 'white' }}>Cancelled</option>
+                                                </select>
                                             </div>
 
                                             {/* Delivery Mode Filter */}
                                             <div>
-                                                <Label className="text-sm font-medium mb-2 block">Delivery Mode</Label>
-                                                <Select value={deliveryModeFilter} onValueChange={setDeliveryModeFilter}>
-                                                    <SelectTrigger className="w-36">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">All Modes</SelectItem>
-                                                        <SelectItem value="pick_up">Pick Up</SelectItem>
-                                                        <SelectItem value="deliver">Deliver</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
+                                                <label htmlFor="archives-delivery-mode-filter" className="block text-sm font-medium text-gray-700 mb-2">Delivery Mode</label>
+                                                <select 
+                                                    id="archives-delivery-mode-filter"
+                                                    value={deliveryModeFilter} 
+                                                    onChange={e => setDeliveryModeFilter(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    style={{ 
+                                                        color: '#111827', 
+                                                        backgroundColor: 'white',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                >
+                                                    <option value="all" style={{ color: '#111827', backgroundColor: 'white' }}>All Modes</option>
+                                                    <option value="pick_up" style={{ color: '#111827', backgroundColor: 'white' }}>Pick Up</option>
+                                                    <option value="deliver" style={{ color: '#111827', backgroundColor: 'white' }}>Deliver</option>
+                                                </select>
                                             </div>
 
                                             {/* Size Filter */}
                                             <div>
-                                                <Label className="text-sm font-medium mb-2 block">Size</Label>
-                                                <Select value={sizeFilter} onValueChange={setSizeFilter}>
-                                                    <SelectTrigger className="w-32">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">All Sizes</SelectItem>
-                                                        {[...new Set(inventory.map(item => item.size))].sort().map((size) => (
-                                                            <SelectItem key={size} value={size}>
-                                                                {size.charAt(0).toUpperCase() + size.slice(1)}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                <label htmlFor="archives-size-filter" className="block text-sm font-medium text-gray-700 mb-2">Size</label>
+                                                <select 
+                                                    id="archives-size-filter"
+                                                    value={sizeFilter} 
+                                                    onChange={e => setSizeFilter(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    style={{ 
+                                                        color: '#111827', 
+                                                        backgroundColor: 'white',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                >
+                                                    <option value="all" style={{ color: '#111827', backgroundColor: 'white' }}>All Sizes</option>
+                                                    {[...new Set(inventory.map(item => item.size))].sort().map((size) => (
+                                                        <option key={size} value={size} style={{ color: '#111827', backgroundColor: 'white' }}>
+                                                            {size.charAt(0).toUpperCase() + size.slice(1)}
+                                                        </option>
+                                                    ))}
+                                                </select>
                                             </div>
                                         </div>
 
                                         {/* Date Range Filters */}
-                                        <div className="flex gap-4 items-end mt-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                                             <div>
                                                 <Label className="text-sm font-medium mb-2 block">Date From</Label>
                                                 <div className="relative">
@@ -1010,7 +1261,15 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                         type="date"
                                                         value={dateFromFilter}
                                                         onChange={(e) => setDateFromFilter(e.target.value)}
-                                                        className="w-40 pr-10"
+                                                        onClick={(e) => {
+                                                            try {
+                                                                (e.target as HTMLInputElement).showPicker();
+                                                            } catch (error) {
+                                                                // Fallback for browsers that don't support showPicker
+                                                                console.log('showPicker not supported');
+                                                            }
+                                                        }}
+                                                        className="w-full pr-10"
                                                     />
                                                     <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                                 </div>
@@ -1022,18 +1281,28 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                         type="date"
                                                         value={dateToFilter}
                                                         onChange={(e) => setDateToFilter(e.target.value)}
-                                                        className="w-40 pr-10"
+                                                        onClick={(e) => {
+                                                            try {
+                                                                (e.target as HTMLInputElement).showPicker();
+                                                            } catch (error) {
+                                                                // Fallback for browsers that don't support showPicker
+                                                                console.log('showPicker not supported');
+                                                            }
+                                                        }}
+                                                        className="w-full pr-10"
                                                     />
                                                     <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                                 </div>
                                             </div>
-                                            <Button 
-                                                variant="outline" 
-                                                onClick={clearAllFilters}
-                                                className="mb-0"
-                                            >
-                                                Clear Filters
-                                            </Button>
+                                            <div className="sm:flex sm:items-end">
+                                                <Button 
+                                                    variant="outline" 
+                                                    onClick={clearAllFilters}
+                                                    className="w-full sm:w-auto"
+                                                >
+                                                    Clear Filters
+                                                </Button>
+                                            </div>
                                         </div>
                                         
                                         {/* Results Counter */}
@@ -1048,21 +1317,22 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         </div>
                                     ) : (
                                         <>
-                                            {/* Archived Orders Table */}
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead className="font-semibold">Status</TableHead>
-                                                        <TableHead className="font-semibold">Order ID</TableHead>
-                                                        <TableHead className="font-semibold">Customer</TableHead>
-                                                        <TableHead className="font-semibold">Address</TableHead>
-                                                        <TableHead className="font-semibold">Size</TableHead>
-                                                        <TableHead className="font-semibold">Quantity</TableHead>
-                                                        <TableHead className="font-semibold">Delivery Mode</TableHead>
-                                                        <TableHead className="font-semibold">Order Date</TableHead>
-                                                        <TableHead className="font-semibold">Delivery Date</TableHead>
-                                                        <TableHead className="font-semibold">Total</TableHead>
-                                                        <TableHead className="font-semibold">Actions</TableHead>
+                                            {/* Desktop Archived Orders Table */}
+                                            <div className="hidden md:block">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead className="font-semibold">Status</TableHead>
+                                                            <TableHead className="font-semibold">Order ID</TableHead>
+                                                            <TableHead className="font-semibold">Customer</TableHead>
+                                                            <TableHead className="font-semibold">Address</TableHead>
+                                                            <TableHead className="font-semibold">Size</TableHead>
+                                                            <TableHead className="font-semibold">Quantity</TableHead>
+                                                            <TableHead className="font-semibold">Delivery Mode</TableHead>
+                                                            <TableHead className="font-semibold">Order Date</TableHead>
+                                                            <TableHead className="font-semibold">Delivery Date</TableHead>
+                                                            <TableHead className="font-semibold">Total</TableHead>
+                                                            <TableHead className="font-semibold">Actions</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
@@ -1102,6 +1372,13 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                             <RotateCcw className="h-4 w-4 mr-2 text-green-600" />
                                                                             Restore Order
                                                                         </DropdownMenuItem>
+                                                                        <DropdownMenuItem
+                                                                            onClick={() => handleDeleteOrder(order)}
+                                                                            className="cursor-pointer text-red-600 focus:text-red-600"
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4 mr-2 text-red-600" />
+                                                                            Delete Permanently
+                                                                        </DropdownMenuItem>
                                                                     </DropdownMenuContent>
                                                                 </DropdownMenu>
                                                             </TableCell>
@@ -1109,6 +1386,88 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                     ))}
                                                 </TableBody>
                                             </Table>
+                                        </div>
+
+                                        {/* Mobile Archived Orders Card View */}
+                                        <div className="md:hidden space-y-4">
+                                            {filteredArchivedOrders.map((order) => (
+                                                <div key={order.order_id} className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
+                                                    <div className="flex justify-between items-start mb-3">
+                                                        <div>
+                                                            <div className="font-medium text-sm text-gray-800">Order #{order.order_id}</div>
+                                                            <div className="font-semibold text-lg text-gray-900">{order.customer_name}</div>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2">
+                                                            {getStatusBadge(order.status)}
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                                        <MoreHorizontal className="h-4 w-4" />
+                                                                    </Button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    <DropdownMenuItem
+                                                                        onClick={() => handleViewOrderDetails(order)}
+                                                                        className="cursor-pointer"
+                                                                    >
+                                                                        <Eye className="h-4 w-4 mr-2 text-blue-600" />
+                                                                        View Details
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem
+                                                                        onClick={() => handleRestoreOrder(order)}
+                                                                        className="cursor-pointer"
+                                                                    >
+                                                                        <RotateCcw className="h-4 w-4 mr-2 text-green-600" />
+                                                                        Restore Order
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem
+                                                                        onClick={() => handleDeleteOrder(order)}
+                                                                        className="cursor-pointer text-red-600 focus:text-red-600"
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4 mr-2 text-red-600" />
+                                                                        Delete Order
+                                                                    </DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                                        <div>
+                                                            <span className="text-gray-800">Address:</span>
+                                                            <div className="font-medium text-gray-900">{order.address}</div>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-800">Size:</span>
+                                                            <div className="font-medium text-gray-900 capitalize">{order.size}</div>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-800">Quantity:</span>
+                                                            <div className="font-medium text-gray-900">{order.quantity}</div>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-800">Delivery:</span>
+                                                            <div className="font-medium text-gray-900 capitalize">{order.delivery_mode.replace('_', ' ')}</div>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-800">Order Date:</span>
+                                                            <div className="font-medium text-gray-900">{formatDate(order.order_date)}</div>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-800">Delivery Date:</span>
+                                                            <div className="font-medium text-gray-900">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="mt-3 pt-3 border-t border-gray-200">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-gray-800 text-sm font-medium">Total Amount</span>
+                                                            <span className="font-bold text-lg text-green-700">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                         </>
                                     )}
                                 </TabsContent>
@@ -1218,7 +1577,13 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                 // Clear
                                                 if (data.size && value) {
                                                     const requestedQuantity = parseInt(value);
-                                                    const selectedItem = inventory.find(item => item.size === data.size);
+                                                    // Parse the selected value to get product_name and size (split on last hyphen)
+                                                    const lastHyphenIndex = data.size.lastIndexOf('-');
+                                                    const productName = lastHyphenIndex > -1 ? data.size.substring(0, lastHyphenIndex) : '';
+                                                    const size = lastHyphenIndex > -1 ? data.size.substring(lastHyphenIndex + 1) : data.size;
+                                                    const selectedItem = inventory.find(item => 
+                                                        item.product_name === productName && item.size === size
+                                                    );
                                                     if (selectedItem && selectedItem.quantity < requestedQuantity) {
                                                         setData('size', '');
                                                     }
@@ -1238,39 +1603,42 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         )}
                                     </div>
                                     <div className="space-y-3">
-                                        <Label htmlFor="size" className="text-base font-medium">Size</Label>
+                                        <Label htmlFor="size-modal" className="text-base font-medium">Size</Label>
                                         {Array.isArray(availableItems) ? (
-                                            <Select 
-                                                value={availableItems.length > 0 ? data.size : ""} 
-                                                onValueChange={(value) => {
-                                                    if (value && value !== "" && value !== "no-stock") {
+                                            <select 
+                                                id="size-modal"
+                                                value={data.size} 
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    if (value && value !== "no-stock") {
                                                         setData('size', value);
                                                     }
                                                 }}
+                                                className={`w-full h-12 text-base px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${validationErrors.size || errors.size ? 'border-red-500' : 'border-gray-300'}`}
+                                                style={{ 
+                                                    color: '#111827', 
+                                                    backgroundColor: 'white',
+                                                    fontSize: '1rem'
+                                                }}
                                             >
-                                                <SelectTrigger className={`w-full h-12 text-base ${validationErrors.size || errors.size ? 'border-red-500' : ''}`}>
-                                                    <SelectValue 
-                                                        placeholder={
-                                                            availableItems.length === 0 
-                                                                ? (data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock')
-                                                                : "Select size"
-                                                        } 
-                                                    />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {availableItems.length > 0 ? (
-                                                        availableItems.map((item) => (
-                                                            <SelectItem key={item.size} value={item.size}>
-                                                                {item.size.charAt(0).toUpperCase() + item.size.slice(1)} - ₱{item.price} (Stock: {item.quantity})
-                                                            </SelectItem>
-                                                        ))
-                                                    ) : (
-                                                        <SelectItem value="no-stock" disabled>
-                                                            {data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock'}
-                                                        </SelectItem>
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
+                                                <option value="" style={{ color: '#6B7280', backgroundColor: 'white' }}>
+                                                    {availableItems.length === 0 
+                                                        ? (data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock')
+                                                        : "Select size"
+                                                    }
+                                                </option>
+                                                {availableItems.length > 0 ? (
+                                                    availableItems.map((item) => (
+                                                        <option key={`${item.product_name}-${item.size}`} value={`${item.product_name}-${item.size}`} style={{ color: '#111827', backgroundColor: 'white' }}>
+                                                            {item.product_name} - {item.size.charAt(0).toUpperCase() + item.size.slice(1)} - ₱{item.price} (Stock: {item.quantity})
+                                                        </option>
+                                                    ))
+                                                ) : (
+                                                    <option value="no-stock" disabled style={{ color: '#6B7280', backgroundColor: 'white' }}>
+                                                        {data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock'}
+                                                    </option>
+                                                )}
+                                            </select>
                                         ) : (
                                             <div className="w-full h-12 text-base border border-gray-300 rounded-md flex items-center px-3 bg-gray-100">
                                                 <span className="text-gray-500">Loading sizes...</span>
@@ -1314,6 +1682,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                     placeholder="dd/mm/yyyy"
                                                     value={data.delivery_date}
                                                     onChange={(e) => setData('delivery_date', e.target.value)}
+                                                    onFocus={(e) => e.target.showPicker?.()}
                                                     className={`w-full h-12 text-base pr-10 ${validationErrors.delivery_date || errors.delivery_date ? 'border-red-500' : ''}`}
                                                     min={getTodayDate()}
                                                 />
@@ -1330,21 +1699,33 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
 
                                 {/* Mode of Delivery */}
                                 <div className="space-y-3">
-                                    <Label className="text-base font-medium">Mode of Delivery</Label>
-                                    <RadioGroup 
-                                        value={data.delivery_mode} 
-                                        onValueChange={(value) => setData('delivery_mode', value)}
-                                        className="flex flex-col space-y-3"
-                                    >
+                                    <label className="block text-base font-medium text-gray-700">Mode of Delivery</label>
+                                    <div className="flex flex-col space-y-3">
                                         <div className="flex items-center space-x-3">
-                                            <RadioGroupItem value="pick_up" id="pick_up" className="w-5 h-5" />
-                                            <Label htmlFor="pick_up" className="cursor-pointer text-base">Pick up</Label>
+                                            <input
+                                                type="radio"
+                                                id="pick_up"
+                                                name="delivery_mode"
+                                                value="pick_up"
+                                                checked={data.delivery_mode === 'pick_up'}
+                                                onChange={(e) => setData('delivery_mode', e.target.value)}
+                                                className="custom-radio"
+                                            />
+                                            <label htmlFor="pick_up" className="cursor-pointer text-base text-gray-700">Pick up</label>
                                         </div>
                                         <div className="flex items-center space-x-3">
-                                            <RadioGroupItem value="deliver" id="deliver" className="w-5 h-5" />
-                                            <Label htmlFor="deliver" className="cursor-pointer text-base">Deliver</Label>
+                                            <input
+                                                type="radio"
+                                                id="deliver"
+                                                name="delivery_mode"
+                                                value="deliver"
+                                                checked={data.delivery_mode === 'deliver'}
+                                                onChange={(e) => setData('delivery_mode', e.target.value)}
+                                                className="custom-radio"
+                                            />
+                                            <label htmlFor="deliver" className="cursor-pointer text-base text-gray-700">Deliver</label>
                                         </div>
-                                    </RadioGroup>
+                                    </div>
                                 </div>
 
                                 {/* Delivery Rider Selection */}
@@ -1357,8 +1738,8 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                             value={data.delivery_rider_id} 
                                             onValueChange={(value) => setData('delivery_rider_id', value)}
                                         >
-                                            <SelectTrigger className={`w-full h-12 text-base ${validationErrors.delivery_rider_id || errors.delivery_rider_id ? 'border-red-500' : ''}`}>
-                                                <SelectValue placeholder="Choose a delivery rider" />
+                                            <SelectTrigger className={`w-full h-12 text-base text-gray-900 ${validationErrors.delivery_rider_id || errors.delivery_rider_id ? 'border-red-500' : ''}`}>
+                                                <SelectValue className="text-gray-900" placeholder="Choose a delivery rider" />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {deliveryRiders.length > 0 ? (
@@ -1648,59 +2029,125 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                             )}
 
                             {/* Action Buttons */}
-                            <div className="flex justify-center space-x-2 pt-1">
+                            <div className="flex flex-col sm:flex-row sm:justify-center space-y-2 sm:space-y-0 sm:space-x-2 pt-1">
                                 <Button
                                     onClick={() => setIsOrderDetailsModalOpen(false)}
                                     variant="outline"
                                     size="sm"
+                                    className="w-full sm:w-auto"
+                                    aria-label="Close order details modal"
                                 >
                                     Close
                                 </Button>
+                                
                                 {selectedOrder.status === 'pending' && (
                                     <>
-                                        {/* Only show "Mark as On Delivery" for delivery orders, not pick-up */}
-                                        {selectedOrder.delivery_mode === 'deliver' && (
+                                        {canCompleteDeliveryOrder(selectedOrder) && (
                                             <Button
                                                 onClick={() => {
-                                                    handleStatusUpdate(selectedOrder.order_id, 'out_for_delivery');
+                                                    handleStatusUpdate(selectedOrder.order_id, 'completed');
                                                     setIsOrderDetailsModalOpen(false);
                                                 }}
-                                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                                                className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
                                                 size="sm"
+                                                aria-label="Mark order as completed"
                                             >
-                                                <Truck className="h-4 w-4 mr-2" />
-                                                Mark as On Delivery
+                                                <Check className="h-4 w-4 mr-2" aria-hidden="true" />
+                                                Mark as Completed
                                             </Button>
                                         )}
                                         <Button
                                             onClick={() => {
-                                                handleStatusUpdate(selectedOrder.order_id, 'completed');
+                                                handleStatusUpdate(selectedOrder.order_id, 'cancelled');
                                                 setIsOrderDetailsModalOpen(false);
                                             }}
-                                            className="bg-green-600 hover:bg-green-700 text-white"
+                                            variant="outline"
                                             size="sm"
+                                            className="border-red-600 text-red-600 hover:bg-red-50 w-full sm:w-auto"
+                                            aria-label="Cancel order"
                                         >
-                                            <Check className="h-4 w-4 mr-2" />
-                                            {selectedOrder.delivery_mode === 'pick_up' ? 'Mark as Completed' : 'Mark as Completed'}
+                                            <X className="h-4 w-4 mr-2" aria-hidden="true" />
+                                            Cancel Order
                                         </Button>
                                     </>
                                 )}
+                                
                                 {selectedOrder.status === 'out_for_delivery' && (
-                                    <Button
-                                        onClick={() => {
-                                            handleStatusUpdate(selectedOrder.order_id, 'completed');
-                                            setIsOrderDetailsModalOpen(false);
-                                        }}
-                                        className="bg-green-600 hover:bg-green-700 text-white"
-                                        size="sm"
-                                    >
-                                        <Check className="h-4 w-4 mr-2" />
-                                        Mark as Delivered
-                                    </Button>
+                                    <>
+                                        <Button
+                                            onClick={() => window.print()}
+                                            variant="outline"
+                                            size="sm"
+                                            className="border-blue-600 text-blue-600 hover:bg-blue-50 w-full sm:w-auto"
+                                            aria-label="Print receipt"
+                                        >
+                                            <Printer className="h-4 w-4 mr-2" aria-hidden="true" />
+                                            Print Receipt
+                                        </Button>
+                                        {canCompleteDeliveryOrder(selectedOrder) && (
+                                            <Button
+                                                onClick={() => {
+                                                    handleStatusUpdate(selectedOrder.order_id, 'completed');
+                                                    setIsOrderDetailsModalOpen(false);
+                                                }}
+                                                className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
+                                                size="sm"
+                                                aria-label="Mark order as delivered"
+                                            >
+                                                <Check className="h-4 w-4 mr-2" aria-hidden="true" />
+                                                Mark as Delivered
+                                            </Button>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="text-red-600">Permanently Delete Order</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to permanently delete order #{orderToDelete?.order_id} for {orderToDelete?.customer_name}?
+                            <br /><br />
+                            <span className="font-medium text-red-600">⚠️ Warning: This action cannot be undone!</span>
+                            <br />
+                            All order data will be permanently removed from the system.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelDeleteOrder}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={confirmDeleteOrder}>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Permanently
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Logout Confirmation Dialog */}
+            <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to sign in again to access your account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelLogout}>
+                            No, Stay Logged In
+                        </Button>
+                        <Button variant="destructive" onClick={confirmLogout}>
+                            Yes, Logout
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

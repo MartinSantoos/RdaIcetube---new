@@ -102,11 +102,12 @@ class User extends Authenticatable
     }
 
     /**
-     * Scope to get employees and admins created through employee management (user_type = 1 or 2)
+     * Scope to get employees and admins created through employee management (excluding system administrator position)
      */
     public function scopeEmployees($query)
     {
-        return $query->whereIn('user_type', [1, 2]);
+        return $query->whereIn('user_type', [1, 2])
+                    ->where('position', '!=', 'System Administrator');
     }
 
     /**
@@ -161,4 +162,12 @@ class User extends Authenticatable
      * Ensure contact is included in array/json representation
      */
     protected $appends = ['contact'];
+
+    /**
+     * Check if user is a System Administrator
+     */
+    public function isSystemAdministrator(): bool
+    {
+        return $this->position === 'System Administrator';
+    }
 }

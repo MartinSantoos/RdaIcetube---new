@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class EmployeeController extends Controller
@@ -17,13 +18,25 @@ class EmployeeController extends Controller
      */
     public function index()
     {
-        $employees = User::activeEmployees()->get();
-        $archivedEmployees = User::archivedEmployees()->get();
+        $currentUser = auth()->user();
+        
+        // Get base queries for employees
+        $employeesQuery = User::activeEmployees();
+        $archivedEmployeesQuery = User::archivedEmployees();
+        
+        // If current user is not a System Administrator, exclude their own account
+        if (!$currentUser->isSystemAdministrator()) {
+            $employeesQuery = $employeesQuery->where('id', '!=', $currentUser->id);
+            $archivedEmployeesQuery = $archivedEmployeesQuery->where('id', '!=', $currentUser->id);
+        }
+        
+        $employees = $employeesQuery->get();
+        $archivedEmployees = $archivedEmployeesQuery->get();
         
         return inertia('admin/employees', [
             'employees' => $employees,
             'archivedEmployees' => $archivedEmployees,
-            'user' => auth()->user()
+            'user' => $currentUser
         ]);
     }
 
@@ -36,57 +49,110 @@ class EmployeeController extends Controller
             'name' => 'required|string|max:255',
             'position' => 'required|string|max:255',
             'contact' => 'required|string|regex:/^09\d{9}$/|max:15',
-            'password' => 'required|string|min:3',
+            'password' => ['required', Password::defaults()],
             'status' => 'required|in:active,inactive',
         ]);
 
-        // Generate username from name (just the name without spaces, lowercase)
-        $username = strtolower(str_replace(' ', '', $request->name));
-        
-        // Check if username already exists and add a number if needed
-        $originalUsername = $username;
-        $counter = 1;
-        while (User::where('username', $username)->exists()) {
-            $username = $originalUsername . $counter;
-            $counter++;
-        }
-        
-        // Use password from form (default is "123")
-        $password = $request->password;
+        // Check if an employee with the same name already exists
+        $existingEmployee = User::whereIn('user_type', [1, 2])
+            ->where('name', $request->name)
+            ->whereNull('archived_at')
+            ->first();
 
-        // Determine user type based on position
-        $userType = strtolower($request->position) === 'admin' ? 1 : 2;
-
-        $employee = User::create([
-            'name' => $request->name,
-            'username' => $username,
-            'email' => null, // Email is nullable for employees
-            'password' => Hash::make($password),
-            'user_type' => $userType, // Admin (1) if position is Admin, otherwise Employee (2)
-            'contact_number' => $request->contact,
-            'position' => $request->position,
-            'status' => $request->status,
-        ]);
-
-        // Log the activity
-        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
-            ActivityLog::log(
-                'employee_created',
-                "Added new employee: {$request->name} (Position: {$request->position}, Username: {$username})",
-                $employee,
-                [
-                    'name' => $request->name,
-                    'username' => $username,
-                    'position' => $request->position,
-                    'contact' => $request->contact,
-                    'status' => $request->status,
-                    'user_type' => $userType
-                ],
-                auth()->user()->id
-            );
+        if ($existingEmployee) {
+            return redirect()->back()->withErrors([
+                'name' => 'An employee with this name already exists. Please use a different name or modify the existing employee.'
+            ])->withInput();
         }
 
-        return redirect()->back()->with('success', 'Employee added successfully! Username: ' . $username . ', Password: ' . $password);
+        // Check if contact number already exists
+        $existingContact = User::whereIn('user_type', [1, 2])
+            ->where('contact_number', $request->contact)
+            ->whereNull('archived_at')
+            ->first();
+
+        if ($existingContact) {
+            return redirect()->back()->withErrors([
+                'contact' => 'This contact number is already registered to another employee.'
+            ])->withInput();
+        }
+
+        try {
+            // Generate username from name (just the name without spaces, lowercase)
+            $username = strtolower(str_replace(' ', '', $request->name));
+            
+            // Check if username already exists and add a number if needed
+            $originalUsername = $username;
+            $counter = 1;
+            while (User::where('username', $username)->exists()) {
+                $username = $originalUsername . $counter;
+                $counter++;
+            }
+            
+            // Use password from form (default is "123")
+            $password = $request->password;
+
+            // Determine user type based on position
+            $userType = strtolower($request->position) === 'admin' ? 1 : 2;
+
+            $employee = User::create([
+                'name' => $request->name,
+                'username' => $username,
+                'email' => null, // Email is nullable for employees
+                'password' => Hash::make($password),
+                'user_type' => $userType, // Admin (1) if position is Admin, otherwise Employee (2)
+                'contact_number' => $request->contact,
+                'position' => $request->position,
+                'status' => $request->status,
+            ]);
+
+            // Log the activity
+            if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+                ActivityLog::log(
+                    'employee_created',
+                    "Added new employee: {$request->name} (Position: {$request->position}, Username: {$username})",
+                    $employee,
+                    [
+                        'name' => $request->name,
+                        'username' => $username,
+                        'position' => $request->position,
+                        'contact' => $request->contact,
+                        'status' => $request->status,
+                        'user_type' => $userType
+                    ],
+                    auth()->user()->id
+                );
+            }
+
+            return redirect()->back()->with('success', 'Employee added successfully! Username: ' . $username . ', Password: ' . $password);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Handle database-specific errors
+            if ($e->getCode() == 23000) { // Integrity constraint violation
+                $errorMessage = 'Database error: ';
+                
+                if (str_contains($e->getMessage(), 'username')) {
+                    $errorMessage .= 'Username already exists. Please try again.';
+                } elseif (str_contains($e->getMessage(), 'contact_number')) {
+                    $errorMessage .= 'Contact number already exists.';
+                } else {
+                    $errorMessage .= 'Duplicate data detected. Please check your input.';
+                }
+                
+                return redirect()->back()->withErrors([
+                    'general' => $errorMessage
+                ])->withInput();
+            }
+            
+            // Handle other database errors
+            return redirect()->back()->withErrors([
+                'general' => 'An error occurred while creating the employee. Please try again.'
+            ])->withInput();
+        } catch (\Exception $e) {
+            // Handle any other errors
+            return redirect()->back()->withErrors([
+                'general' => 'An unexpected error occurred. Please try again.'
+            ])->withInput();
+        }
     }
 
     /**
@@ -94,7 +160,13 @@ class EmployeeController extends Controller
      */
     public function update(Request $request, $id)
     {
+        $currentUser = auth()->user();
         $employee = User::whereIn('user_type', [1, 2])->findOrFail($id);
+
+        // Prevent non-System Administrators from editing their own account
+        if (!$currentUser->isSystemAdministrator() && $currentUser->id == $id) {
+            abort(403, 'You cannot edit your own account. Please contact a System Administrator.');
+        }
 
         // Store original values for comparison
         $originalData = $employee->only(['name', 'contact_number', 'position', 'status', 'user_type']);
@@ -154,7 +226,14 @@ class EmployeeController extends Controller
      */
     public function destroy($id)
     {
+        $currentUser = auth()->user();
         $employee = User::activeEmployees()->findOrFail($id);
+
+        // Prevent non-System Administrators from archiving their own account
+        if (!$currentUser->isSystemAdministrator() && $currentUser->id == $id) {
+            abort(403, 'You cannot archive your own account. Please contact a System Administrator.');
+        }
+
         $employee->delete(); // This will now use soft delete (archived_at)
 
         return redirect()->back()->with('success', 'Employee archived successfully!');
@@ -205,7 +284,14 @@ class EmployeeController extends Controller
      */
     public function restore($id)
     {
+        $currentUser = auth()->user();
         $employee = User::archivedEmployees()->findOrFail($id);
+
+        // Prevent non-System Administrators from restoring their own account
+        if (!$currentUser->isSystemAdministrator() && $currentUser->id == $id) {
+            abort(403, 'You cannot restore your own account. Please contact a System Administrator.');
+        }
+
         $employee->restore();
 
         // Log the activity
@@ -232,7 +318,31 @@ class EmployeeController extends Controller
      */
     public function forceDelete($id)
     {
+        $currentUser = auth()->user();
         $employee = User::archivedEmployees()->findOrFail($id);
+
+        // Prevent non-System Administrators from permanently deleting their own account
+        if (!$currentUser->isSystemAdministrator() && $currentUser->id == $id) {
+            abort(403, 'You cannot permanently delete your own account. Please contact a System Administrator.');
+        }
+        
+        // Log the activity before deletion
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'employee_deleted_permanently',
+                "Permanently deleted employee: {$employee->name} (Position: {$employee->position}, Username: {$employee->username})",
+                $employee,
+                [
+                    'name' => $employee->name,
+                    'username' => $employee->username,
+                    'position' => $employee->position,
+                    'contact' => $employee->contact,
+                    'user_type' => $employee->user_type,
+                ],
+                auth()->user()->id
+            );
+        }
+        
         $employee->forceDelete();
 
         return redirect()->back()->with('success', 'Employee permanently deleted!');
@@ -243,7 +353,14 @@ class EmployeeController extends Controller
      */
     public function toggleStatus($id)
     {
+        $currentUser = auth()->user();
         $employee = User::activeEmployees()->findOrFail($id);
+
+        // Prevent non-System Administrators from changing their own status
+        if (!$currentUser->isSystemAdministrator() && $currentUser->id == $id) {
+            abort(403, 'You cannot change your own account status. Please contact a System Administrator.');
+        }
+
         $oldStatus = $employee->status;
         $newStatus = $employee->status === 'active' ? 'inactive' : 'active';
         
@@ -312,5 +429,42 @@ class EmployeeController extends Controller
         ]);
 
         return $pdf->download($filename);
+    }
+
+    /**
+     * Reset employee password to default (123)
+     */
+    public function resetPassword($id)
+    {
+        try {
+            $employee = User::findOrFail($id);
+            
+            // Ensure the user is an employee (not admin)
+            if ($employee->user_type === 0) {
+                return redirect()->back()->withErrors(['error' => 'Cannot reset system administrator password.']);
+            }
+            // Reset password to default
+            $employee->password = Hash::make('123');
+            $employee->save();
+            
+            // Try to log the activity - but don't fail if logging fails
+            try {
+                $currentUser = auth()->user();
+                if ($currentUser && $currentUser->id && is_numeric($currentUser->id)) {
+                    ActivityLog::create([
+                        'user_id' => (int) $currentUser->id,
+                        'action' => 'Password Reset',
+                        'description' => "Reset password for employee: {$employee->name}",
+                    ]);
+                }
+            } catch (\Exception $e) {
+                // Log the error but don't stop the password reset
+                \Log::error('Failed to log password reset activity: ' . $e->getMessage());
+            }
+            
+            return redirect()->back()->with('success', 'Employee password has been reset to default (123).');
+        } catch (\Exception $e) {
+            return redirect()->back()->withErrors(['error' => 'Failed to reset password: ' . $e->getMessage()]);
+        }
     }
 }

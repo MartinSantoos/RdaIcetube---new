@@ -19,8 +19,18 @@ class CheckAdmin
             return redirect('/login');
         }
         
-        if (auth()->user()->user_type !== 1) {
+        $user = auth()->user();
+        
+        if ($user->user_type !== 1) {
             abort(403, 'Access denied. Admin privileges required.');
+        }
+
+        // Check if user account is active
+        if ($user->status !== 'active') {
+            auth()->guard('web')->logout();
+            return redirect('/login')->withErrors([
+                'username' => 'Your account has been deactivated. Please contact an administrator.'
+            ]);
         }
 
         return $next($request);

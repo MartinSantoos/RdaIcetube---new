@@ -79,6 +79,7 @@ export default function Password() {
                                         className="mt-1 block w-full"
                                         autoComplete="new-password"
                                         placeholder="New password"
+                                        maxLength={15}
                                     />
 
                                     <InputError message={errors.password} />
@@ -94,6 +95,7 @@ export default function Password() {
                                         className="mt-1 block w-full"
                                         autoComplete="new-password"
                                         placeholder="Confirm password"
+                                        maxLength={15}
                                     />
 
                                     <InputError message={errors.password_confirmation} />

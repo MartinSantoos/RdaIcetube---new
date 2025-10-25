@@ -17,6 +17,13 @@ export default function DateFilterModal({ isOpen, onClose, onExport, title, desc
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
+    // Format date for display (DD/MM/YYYY)
+    const formatDateForDisplay = (dateString: string) => {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-GB'); // DD/MM/YYYY format
+    };
+
     const handleExport = () => {
         if (!startDate || !endDate) {
             alert('Please select both start and end dates');
@@ -75,12 +82,56 @@ export default function DateFilterModal({ isOpen, onClose, onExport, title, desc
                             <div className="relative">
                                 <Input
                                     id="startDate"
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="w-full pr-10"
+                                    type="text"
+                                    value={formatDateForDisplay(startDate)}
+                                    onClick={(e) => {
+                                        const inputElement = e.target as HTMLInputElement;
+                                        const rect = inputElement.getBoundingClientRect();
+                                        
+                                        // Create a temporary date input positioned over the clicked input
+                                        const tempInput = document.createElement('input');
+                                        tempInput.type = 'date';
+                                        tempInput.value = startDate;
+                                        tempInput.style.position = 'fixed';
+                                        tempInput.style.top = `${rect.top}px`;
+                                        tempInput.style.left = `${rect.left}px`;
+                                        tempInput.style.width = `${rect.width}px`;
+                                        tempInput.style.height = `${rect.height}px`;
+                                        tempInput.style.opacity = '0';
+                                        tempInput.style.pointerEvents = 'none';
+                                        tempInput.style.zIndex = '9999';
+                                        document.body.appendChild(tempInput);
+                                        
+                                        tempInput.onchange = (e) => {
+                                            const target = e.target as HTMLInputElement;
+                                            setStartDate(target.value);
+                                            document.body.removeChild(tempInput);
+                                        };
+                                        
+                                        tempInput.onblur = () => {
+                                            // Clean up if user closes picker without selecting
+                                            if (document.body.contains(tempInput)) {
+                                                document.body.removeChild(tempInput);
+                                            }
+                                        };
+                                        
+                                        // Small delay to ensure element is in DOM before showing picker
+                                        setTimeout(() => {
+                                            tempInput.showPicker?.();
+                                            
+                                            // Fallback for browsers without showPicker
+                                            if (!tempInput.showPicker) {
+                                                tempInput.style.opacity = '1';
+                                                tempInput.style.pointerEvents = 'auto';
+                                                tempInput.focus();
+                                                tempInput.click();
+                                            }
+                                        }, 10);
+                                    }}
+                                    className="w-full cursor-pointer"
+                                    placeholder="Select start date"
+                                    readOnly
                                 />
-                                <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                             </div>
                         </div>
                         <div>
@@ -88,12 +139,56 @@ export default function DateFilterModal({ isOpen, onClose, onExport, title, desc
                             <div className="relative">
                                 <Input
                                     id="endDate"
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="w-full pr-10"
+                                    type="text"
+                                    value={formatDateForDisplay(endDate)}
+                                    onClick={(e) => {
+                                        const inputElement = e.target as HTMLInputElement;
+                                        const rect = inputElement.getBoundingClientRect();
+                                        
+                                        // Create a temporary date input positioned over the clicked input
+                                        const tempInput = document.createElement('input');
+                                        tempInput.type = 'date';
+                                        tempInput.value = endDate;
+                                        tempInput.style.position = 'fixed';
+                                        tempInput.style.top = `${rect.top}px`;
+                                        tempInput.style.left = `${rect.left}px`;
+                                        tempInput.style.width = `${rect.width}px`;
+                                        tempInput.style.height = `${rect.height}px`;
+                                        tempInput.style.opacity = '0';
+                                        tempInput.style.pointerEvents = 'none';
+                                        tempInput.style.zIndex = '9999';
+                                        document.body.appendChild(tempInput);
+                                        
+                                        tempInput.onchange = (e) => {
+                                            const target = e.target as HTMLInputElement;
+                                            setEndDate(target.value);
+                                            document.body.removeChild(tempInput);
+                                        };
+                                        
+                                        tempInput.onblur = () => {
+                                            // Clean up if user closes picker without selecting
+                                            if (document.body.contains(tempInput)) {
+                                                document.body.removeChild(tempInput);
+                                            }
+                                        };
+                                        
+                                        // Small delay to ensure element is in DOM before showing picker
+                                        setTimeout(() => {
+                                            tempInput.showPicker?.();
+                                            
+                                            // Fallback for browsers without showPicker
+                                            if (!tempInput.showPicker) {
+                                                tempInput.style.opacity = '1';
+                                                tempInput.style.pointerEvents = 'auto';
+                                                tempInput.focus();
+                                                tempInput.click();
+                                            }
+                                        }, 10);
+                                    }}
+                                    className="w-full cursor-pointer"
+                                    placeholder="Select end date"
+                                    readOnly
                                 />
-                                <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                             </div>
                         </div>
                     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Package, ShoppingCart, User, LogOut, Eye, Check, Truck, Search, Filter, Calendar, MoreHorizontal, Menu, X, Camera, Upload, Plus } from 'lucide-react';
+import { Package, ShoppingCart, User, LogOut, Eye, Check, Truck, Search, Filter, Calendar, MoreHorizontal, Menu, X, Camera, Upload, Plus, Settings, BarChart3 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,6 +41,7 @@ interface Order {
     delivery_rider_id?: number;
     deliveryRider?: User;
     delivery_photo?: string;
+    archived?: boolean; // Add archived field for type safety
 }
 
 interface InventoryItem {
@@ -143,9 +144,9 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
 
     const getStatusBadge = (status: string) => {
         if (status === 'pending') {
-            return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">● Pending</Badge>;
+            return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">● Pending</Badge>;
         } else if (status === 'out_for_delivery') {
-            return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">● On Delivery</Badge>;
+            return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">● Out for Delivery</Badge>;
         } else if (status === 'completed') {
             return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">● Completed</Badge>;
         } else if (status === 'cancelled') {
@@ -433,24 +434,32 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
     }, [showSuccess]);
 
     // Filter orders based on search term and status
-    const filteredOrders = orders.filter(order => {
-        const matchesSearch = 
-            order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            order.order_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            order.contact_number.includes(searchTerm) ||
-            order.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const filteredOrders = useMemo(() => {
+        if (!orders || !Array.isArray(orders)) return [];
+        
+        return orders.filter(order => {
+            try {
+                const searchTermLower = searchTerm.toLowerCase();
+                const matchesSearch = searchTerm === '' || 
+                    (order?.customer_name || '').toLowerCase().includes(searchTermLower) ||
+                    (order?.order_id || '').toString().toLowerCase().includes(searchTermLower)
 
-        const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+                const matchesStatus = statusFilter === 'all' || order?.status === statusFilter;
 
-        return matchesSearch && matchesStatus;
-    });
+                return matchesSearch && matchesStatus;
+            } catch (error) {
+                console.error('Error filtering order:', error, order);
+                return false;
+            }
+        });
+    }, [orders, searchTerm, statusFilter]);
 
     return (
         <div className="min-h-screen bg-gray-50">
             <Head title="My Orders - RDA Tube Ice" />
             
             {/* Header */}
-            <header className="bg-blue-600 text-white shadow-lg relative z-50">
+            <header className="bg-blue-600 text-white shadow-lg sticky top-0 z-50">
                 <div className="flex items-center justify-between px-4 md:px-6 py-4">
                     <div className="flex items-center space-x-4">
                         <button
@@ -481,32 +490,54 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
 
             <div className="flex relative">
                 {/* Mobile Sidebar Overlay */}
-                {sidebarOpen && (
+                {isMobile && sidebarOpen && (
                     <div 
-                        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity md:hidden"
+                        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 40 }}
                         onClick={() => setSidebarOpen(false)}
                     />
                 )}
                 
-                {/* Desktop Sidebar - Hidden on mobile by default, shown on desktop */}
-                <aside className="w-64 bg-blue-600 min-h-screen text-white hidden md:block">
+                {/* Sidebar */}
+                <aside className={`
+                    ${isMobile 
+                        ? `fixed top-0 left-0 z-50 w-64 h-full bg-blue-600 transform transition-transform duration-300 ease-in-out ${
+                            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                        }` 
+                        : 'fixed top-16 left-0 z-40 w-64 h-[calc(100vh-4rem)] bg-blue-600 overflow-y-auto'
+                    } text-white
+                `}>
                     <div className="p-6">
+                        {isMobile && (
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-lg font-semibold">Menu</h2>
+                                <button
+                                    onClick={() => setSidebarOpen(false)}
+                                    className="p-2 rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        )}
+                        
                         <div className="mb-8">
-                            <h2 className="text-lg font-semibold mb-4">Menu</h2>
+                            {!isMobile && <h2 className="text-lg font-semibold mb-4">Menu</h2>}
                             <nav className="space-y-2">
                                 <Link 
                                     href="/employee/dashboard" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <Package className="w-5 h-5" />
+                                    <BarChart3 className="w-5 h-5" />
                                     <span>Dashboard</span>
                                 </Link>
                                 <Link 
                                     href="/employee/orders" 
                                     className="flex items-center space-x-3 bg-blue-700 px-4 py-3 rounded-lg"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <ShoppingCart className="w-5 h-5" />
-                                    <span>My Orders</span>
+                                    <span>Orders</span>
                                 </Link>
                             </nav>
                         </div>
@@ -517,12 +548,16 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                 <Link 
                                     href="/employee/settings" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <User className="w-5 h-5" />
+                                    <Settings className="w-5 h-5" />
                                     <span>Settings</span>
                                 </Link>
                                 <button 
-                                    onClick={handleLogout}
+                                    onClick={() => {
+                                        if (isMobile) setSidebarOpen(false);
+                                        handleLogout();
+                                    }}
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-200 hover:text-gray-900 transition-colors w-full text-left"
                                 >
                                     <LogOut className="w-5 h-5" />
@@ -533,75 +568,8 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                     </div>
                 </aside>
 
-                {/* Mobile Sidebar - Only shown when sidebarOpen is true */}
-                {sidebarOpen && (
-                    <aside className="
-                        fixed inset-y-0 left-0 z-50 w-64 
-                        bg-blue-600 text-white
-                        transform translate-x-0 
-                        transition-transform duration-300 ease-in-out
-                        md:hidden
-                    ">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-lg font-semibold">Menu</h2>
-                                <button
-                                    onClick={() => setSidebarOpen(false)}
-                                    className="p-2 rounded-lg hover:bg-blue-700 transition-colors"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-                            <div className="mb-8">
-                                <nav className="space-y-2">
-                                    <Link 
-                                        href="/employee/dashboard" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <Package className="w-5 h-5" />
-                                        <span>Dashboard</span>
-                                    </Link>
-                                    <Link 
-                                        href="/employee/orders" 
-                                        className="flex items-center space-x-3 bg-blue-700 px-4 py-3 rounded-lg"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <ShoppingCart className="w-5 h-5" />
-                                        <span>Orders</span>
-                                    </Link>
-                                </nav>
-                            </div>
-
-                            <div className="border-t border-blue-500 pt-6">
-                                <h3 className="text-sm font-semibold mb-4">Settings</h3>
-                                <nav className="space-y-2">
-                                    <Link 
-                                        href="/employee/settings" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <User className="w-5 h-5" />
-                                        <span>Settings</span>
-                                    </Link>
-                                    <button 
-                                        onClick={() => {
-                                            setSidebarOpen(false);
-                                            handleLogout();
-                                        }}
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-200 hover:text-gray-900 transition-colors w-full text-left"
-                                    >
-                                        <LogOut className="w-5 h-5" />
-                                        <span>Log out</span>
-                                    </button>
-                                </nav>
-                            </div>
-                        </div>
-                    </aside>
-                )}
-
                 {/* Main Content */}
-                <main className={`flex-1 p-4 md:p-8 ${isMobile ? 'w-full' : ''}`}>
+                <main className={`flex-1 p-4 md:p-8 bg-gray-50 ${isMobile ? 'w-full' : 'ml-64'}`}>
                     {/* Page Header */}
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <div className="flex items-center justify-between">
@@ -614,8 +582,8 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                 className="bg-white text-blue-600 hover:bg-blue-50 font-medium px-4 py-2 md:px-6 md:py-3"
                             >
                                 <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2" />
-                                <span className="hidden md:inline">Create Order</span>
-                                <span className="md:hidden">Create</span>
+                                <span className="hidden md:inline">Add Order</span>
+                                <span className="md:hidden">Add Order</span>
                             </Button>
                         </div>
                     </div>
@@ -682,20 +650,24 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                 </div>
 
                                 {/* Filters */}
-                                <div className="flex gap-4">
+                                <div className="flex gap-4 text-gray-600">
                                     {/* Status Filter */}
                                     <div>
-                                        <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                            <SelectTrigger className="w-32">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">All Status</SelectItem>
-                                                <SelectItem value="pending">Pending</SelectItem>
-                                                <SelectItem value="out_for_delivery">On Delivery</SelectItem>
-                                                <SelectItem value="completed">Completed</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <select 
+                                            value={statusFilter} 
+                                            onChange={e => setStatusFilter(e.target.value)}
+                                            className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            style={{ 
+                                                color: '#111827', 
+                                                backgroundColor: 'white',
+                                                fontSize: '0.875rem'
+                                            }}
+                                        >
+                                            <option value="all" style={{ color: '#111827', backgroundColor: 'white' }}>All Status</option>
+                                            <option value="pending" style={{ color: '#111827', backgroundColor: 'white' }}>Pending</option>
+                                            <option value="out_for_delivery" style={{ color: '#111827', backgroundColor: 'white' }}>On Delivery</option>
+                                            <option value="completed" style={{ color: '#111827', backgroundColor: 'white' }}>Completed</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -706,7 +678,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                         </div>
 
                         {/* Orders Table - Desktop */}
-                        {!isMobile ? (
+                        <div className="hidden md:block">
                             <div className="overflow-x-auto">
                                 <Table>
                                     <TableHeader>
@@ -794,99 +766,102 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                     </TableBody>
                                 </Table>
                             </div>
-                        ) : (
-                            /* Orders Cards - Mobile */
-                            <div className="space-y-4 p-4">
-                                {filteredOrders.length === 0 ? (
-                                    <div className="text-center py-8 text-gray-500">
-                                        {searchTerm || statusFilter !== 'all' ? 'No orders found matching your filters' : 'No orders assigned to you'}
-                                    </div>
-                                ) : (
-                                    filteredOrders.map((order) => (
-                                        <div key={order.order_id} className="bg-white border rounded-lg p-4 shadow-sm">
-                                            <div className="flex items-center justify-between mb-3">
-                                                <div className="font-semibold text-lg">#{order.order_id}</div>
+                        </div>
+
+                        {/* Orders Cards - Mobile */}
+                        <div className="md:hidden space-y-4 p-4">
+                            {filteredOrders.length > 0 ? (
+                                filteredOrders.map((order) => (
+                                    <div key={order.order_id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div>
+                                                <div className="font-medium text-sm text-gray-700">Order #{order.order_id}</div>
+                                                <div className="font-semibold text-lg text-gray-900">{order.customer_name}</div>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
                                                 {getStatusBadge(order.status)}
-                                            </div>
-                                            
-                                            <div className="space-y-2 text-sm">
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Customer:</span>
-                                                    <span className="font-medium">{order.customer_name}</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Address:</span>
-                                                    <span className="text-right font-medium truncate max-w-48">{order.address}</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Size & Quantity:</span>
-                                                    <span className="font-medium">{order.size} × {order.quantity}</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Delivery:</span>
-                                                    <span className="font-medium capitalize">
-                                                        {order.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Order Date:</span>
-                                                    <span className="font-medium">{formatDate(order.order_date)}</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Delivery Date:</span>
-                                                    <span className="font-medium">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center pt-2 border-t">
-                                                    <span className="text-gray-600">Total:</span>
-                                                    <span className="font-bold text-lg">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex gap-2 mt-4">
-                                                <Button 
-                                                    variant="outline" 
-                                                    size="sm" 
-                                                    onClick={() => handleViewOrderDetails(order)}
-                                                    className="flex-1"
-                                                >
-                                                    <Eye className="mr-2 h-4 w-4" />
-                                                    View Details
-                                                </Button>
-                                                {order.status === 'pending' && (
-                                                    <Button 
-                                                        variant="default" 
-                                                        size="sm"
-                                                        onClick={() => handleStatusUpdate(order.order_id, 'out_for_delivery')}
-                                                        className="flex-1"
-                                                    >
-                                                        <Truck className="mr-2 h-4 w-4" />
-                                                        Start Delivery
-                                                    </Button>
-                                                )}
-                                                {order.status === 'out_for_delivery' && (
-                                                    <Button 
-                                                        variant="default" 
-                                                        size="sm"
-                                                        onClick={() => handleCompleteOrder(order)}
-                                                        className="flex-1 bg-green-600 hover:bg-green-700"
-                                                    >
-                                                        <Check className="mr-2 h-4 w-4" />
-                                                        Complete Order
-                                                    </Button>
-                                                )}
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-48">
+                                                        <DropdownMenuItem onClick={() => handleViewOrderDetails(order)}>
+                                                            <Eye className="mr-2 h-4 w-4" />
+                                                            View Details
+                                                        </DropdownMenuItem>
+                                                        {order.status === 'pending' && (
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleStatusUpdate(order.order_id, 'out_for_delivery')}
+                                                                className="text-blue-600"
+                                                            >
+                                                                <Truck className="mr-2 h-4 w-4" />
+                                                                Start Delivery
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        {order.status === 'out_for_delivery' && (
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleCompleteOrder(order)}
+                                                                className="text-green-600"
+                                                            >
+                                                                <Check className="mr-2 h-4 w-4" />
+                                                                Complete Order
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
                                         </div>
-                                    ))
-                                )}
-                            </div>
-                        )}
+
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div>
+                                                <span className="text-gray-700">Address:</span>
+                                                <div className="font-medium text-gray-800">{order.address}</div>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-700">Size:</span>
+                                                <div className="font-medium text-gray-800 capitalize">{order.size}</div>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-700">Quantity:</span>
+                                                <div className="font-medium text-gray-800">{order.quantity}</div>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-700">Delivery:</span>
+                                                <div className="font-medium text-gray-800 capitalize">{order.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}</div>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-700">Order Date:</span>
+                                                <div className="font-medium text-gray-800">{formatDate(order.order_date)}</div>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-700">Delivery Date:</span>
+                                                <div className="font-medium text-gray-800">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="mt-3 pt-3 border-t border-gray-200">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-700 text-sm">Total Amount</span>
+                                                <span className="font-bold text-lg text-green-600">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-center py-8 text-gray-600">
+                                    {searchTerm || statusFilter !== 'all' ? 'No orders found matching your filters' : 'No orders assigned to you'}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </main>
             </div>
 
             {/* Order Details Modal */}
             <Dialog open={isOrderDetailsModalOpen} onOpenChange={setIsOrderDetailsModalOpen}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
                     <DialogHeader className="pb-2">
                         <DialogTitle className="text-lg font-semibold">Order Details</DialogTitle>
                     </DialogHeader>
@@ -1001,7 +976,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                         <img 
                                             src={`/storage/${selectedOrder.delivery_photo}`}
                                             alt="Delivery confirmation photo"
-                                            className="max-w-full h-48 object-cover mx-auto rounded-lg shadow-md"
+                                            className="max-w-full h-32 sm:h-48 object-cover mx-auto rounded-lg shadow-md"
                                         />
                                         <p className="text-xs text-gray-500 mt-2">
                                             Photo taken at delivery completion
@@ -1011,27 +986,30 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                             )}
 
                             {/* Action Buttons */}
-                            <div className="flex justify-center space-x-2 pt-1">
-                                <Button
-                                    onClick={() => setIsOrderDetailsModalOpen(false)}
-                                    variant="outline"
-                                    size="sm"
-                                >
-                                    Close
-                                </Button>
-                                {selectedOrder.status === 'pending' && (
+                            <div className="pt-4 border-t mt-4">
+                                <div className="flex justify-center space-x-2">
                                     <Button
-                                        onClick={() => {
-                                            handleStatusUpdate(selectedOrder.order_id, 'out_for_delivery');
-                                            setIsOrderDetailsModalOpen(false);
-                                        }}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                                        onClick={() => setIsOrderDetailsModalOpen(false)}
+                                        variant="outline"
                                         size="sm"
+                                        className="min-w-[80px]"
                                     >
-                                        <Truck className="h-4 w-4 mr-2" />
-                                        Start Delivery
+                                        Close
                                     </Button>
-                                )}
+                                    {selectedOrder.status === 'pending' && (
+                                        <Button
+                                            onClick={() => {
+                                                handleStatusUpdate(selectedOrder.order_id, 'out_for_delivery');
+                                                setIsOrderDetailsModalOpen(false);
+                                            }}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
+                                            size="sm"
+                                        >
+                                            <Truck className="h-4 w-4 mr-2" />
+                                            Start Delivery
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1306,37 +1284,40 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                     </div>
                                     <div className="space-y-3">
                                         <Label htmlFor="size" className="text-base font-medium">Size</Label>
-                                        <Select 
-                                            value={availableItems.length > 0 ? data.size : ""} 
-                                            onValueChange={(value) => {
+                                        <select
+                                            id="size"
+                                            value={availableItems.length > 0 ? data.size : ""}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
                                                 if (value && value !== "" && value !== "no-stock") {
                                                     setData('size', value);
                                                 }
                                             }}
+                                            className={`w-full h-12 text-base px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${validationErrors.size || errors.size ? 'border-red-500' : 'border-gray-300'}`}
+                                            style={{ 
+                                                color: '#111827', 
+                                                backgroundColor: 'white',
+                                                fontSize: '1rem'
+                                            }}
                                         >
-                                            <SelectTrigger className={`w-full h-12 text-base ${validationErrors.size || errors.size ? 'border-red-500' : ''}`}>
-                                                <SelectValue 
-                                                    placeholder={
-                                                        availableItems.length === 0 
-                                                            ? (data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock')
-                                                            : "Select size"
-                                                    } 
-                                                />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {availableItems.length > 0 ? (
-                                                    availableItems.map((item) => (
-                                                        <SelectItem key={item.size} value={item.size}>
-                                                            {item.size.charAt(0).toUpperCase() + item.size.slice(1)} - ₱{item.price} (Stock: {item.quantity})
-                                                        </SelectItem>
-                                                    ))
-                                                ) : (
-                                                    <SelectItem value="no-stock" disabled>
-                                                        {data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock'}
-                                                    </SelectItem>
-                                                )}
-                                            </SelectContent>
-                                        </Select>
+                                            <option value="" style={{ color: '#6B7280', backgroundColor: 'white' }}>
+                                                {availableItems.length === 0 
+                                                    ? (data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock')
+                                                    : "Select size"
+                                                }
+                                            </option>
+                                            {availableItems.length > 0 ? (
+                                                availableItems.map((item) => (
+                                                    <option key={item.size} value={item.size} style={{ color: '#111827', backgroundColor: 'white' }}>
+                                                        {item.size.charAt(0).toUpperCase() + item.size.slice(1)} - ₱{item.price} (Stock: {item.quantity})
+                                                    </option>
+                                                ))
+                                            ) : (
+                                                <option value="no-stock" disabled style={{ color: '#6B7280', backgroundColor: 'white' }}>
+                                                    {data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock'}
+                                                </option>
+                                            )}
+                                        </select>
                                         {(validationErrors.size || errors.size) && (
                                             <p className="text-sm text-red-600">
                                                 {validationErrors.size || (Array.isArray(errors.size) ? errors.size[0] : errors.size)}
@@ -1375,6 +1356,14 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                                     placeholder="dd/mm/yyyy"
                                                     value={data.delivery_date}
                                                     onChange={(e) => setData('delivery_date', e.target.value)}
+                                                    onClick={(e) => {
+                                                        try {
+                                                            (e.target as HTMLInputElement).showPicker();
+                                                        } catch (error) {
+                                                            // Fallback for browsers that don't support showPicker
+                                                            console.log('showPicker not supported');
+                                                        }
+                                                    }}
                                                     className={`w-full h-12 text-base pr-10 ${validationErrors.delivery_date || errors.delivery_date ? 'border-red-500' : ''}`}
                                                     min={getTodayDate()}
                                                 />

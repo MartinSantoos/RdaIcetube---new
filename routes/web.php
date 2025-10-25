@@ -50,26 +50,31 @@ Route::middleware(['auth'])->group(function () {
                                                 ->count();
         $thisYearOrdersCount = \App\Models\Order::whereYear('created_at', now()->year)->count();
         
-        // Get inventory statistics
-        $totalStock = \App\Models\Inventory::where('status', 'available')->sum('quantity');
-        $totalItems = \App\Models\Inventory::where('status', 'available')->count();
+        // Get inventory statistics (excluding archived items)
+        $totalStock = \App\Models\Inventory::where('status', 'available')
+                                           ->whereNull('archived_at')
+                                           ->sum('quantity');
+        $totalItems = \App\Models\Inventory::where('status', 'available')
+                                           ->whereNull('archived_at')
+                                           ->count();
         
-        // Define critical stock threshold (10 units or less, including out of stock)
+        // Define critical stock threshold (10 units or less, including out of stock, but excluding archived)
         $criticalThreshold = 10;
         $criticalStockItems = \App\Models\Inventory::where('quantity', '<=', $criticalThreshold)
+                                                   ->whereNull('archived_at')
                                                    ->get(['product_name', 'size', 'quantity', 'status']);
         
         // Get today's sales data for the chart
         $todaysSales = \App\Models\Order::where('status', 'completed')
-                                       ->whereDate('updated_at', today())
-                                       ->selectRaw('HOUR(updated_at) as hour, SUM(total) as sales')
+                                       ->whereDate('order_date', today())
+                                       ->selectRaw('HOUR(created_at) as hour, SUM(total) as sales')
                                        ->groupBy('hour')
                                        ->orderBy('hour')
                                        ->get();
         
         // Calculate total sales for today
         $todaysTotalSales = \App\Models\Order::where('status', 'completed')
-                                           ->whereDate('updated_at', today())
+                                           ->whereDate('order_date', today())
                                            ->sum('total');
         
         // Create hourly sales data array (0-23 hours)
@@ -98,7 +103,7 @@ Route::middleware(['auth'])->group(function () {
                 'criticalStockItems' => $criticalStockItems
             ],
             'salesStats' => [
-                'todayTotal' => $todaysTotalSales,
+                'totalSales' => $todaysTotalSales,
                 'hourlySales' => $hourlySales
             ],
             'recentActivities' => $recentActivities
@@ -116,7 +121,8 @@ Route::middleware(['auth'])->group(function () {
                 $query->whereDate('created_at', today());
                 break;
             case 'all':
-                // No additional filter, get all activities
+                // No additional filter, get all activities but limit to avoid performance issues
+                $query->limit(1000);
                 break;
             case 'recent':
             default:
@@ -162,8 +168,11 @@ Route::middleware(['auth'])->group(function () {
             ->orderBy('order_date', 'desc')
             ->get();
 
-        // Get inventory items to show available sizes
-        $inventory = \App\Models\Inventory::select('size', 'price', 'status', 'quantity')
+        // Get inventory items to show available sizes (excluding archived items, including critical stock)
+        $inventory = \App\Models\Inventory::select('product_name', 'size', 'price', 'status', 'quantity')
+            ->whereNull('archived_at')
+            ->whereIn('status', ['available', 'critical'])
+            ->orderBy('product_name')
             ->orderBy('size')
             ->get();
         
@@ -183,6 +192,9 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('admin/orders/{order_id}/restore', [OrderController::class, 'restore'])
         ->name('orders.restore')->middleware('check.admin');
 
+    Route::delete('admin/orders/{order_id}/force-delete', [OrderController::class, 'forceDelete'])
+        ->name('orders.forceDelete')->middleware('check.admin');
+
     // Admin Orders
     Route::post('admin/orders', [OrderController::class, 'store'])
         ->name('orders.store')->middleware('check.admin');
@@ -197,12 +209,24 @@ Route::middleware(['auth'])->group(function () {
     // Admin Inventory 
     Route::get('admin/inventory', [App\Http\Controllers\InventoryController::class, 'index'])
         ->name('admin.inventory')->middleware('check.admin');
+        
+    Route::get('admin/inventory-new', [App\Http\Controllers\InventoryController::class, 'index'])
+        ->name('admin.inventory-new')->middleware('check.admin');
     
     Route::post('admin/inventory', [App\Http\Controllers\InventoryController::class, 'store'])
         ->name('inventory.store')->middleware('check.admin');
         
     Route::patch('admin/inventory/{inventory_id}/update-stock', [App\Http\Controllers\InventoryController::class, 'updateStock'])
         ->name('inventory.updateStock')->middleware('check.admin');
+    
+    Route::patch('admin/inventory/{inventory_id}/archive', [App\Http\Controllers\InventoryController::class, 'archive'])
+        ->name('inventory.archive')->middleware('check.admin');
+        
+    Route::patch('admin/inventory/{inventory_id}/restore', [App\Http\Controllers\InventoryController::class, 'restore'])
+        ->name('inventory.restore')->middleware('check.admin');
+    
+    Route::delete('admin/inventory/{inventory_id}', [App\Http\Controllers\InventoryController::class, 'destroy'])
+        ->name('inventory.destroy')->middleware('check.admin');
     
     Route::get('admin/inventory/export', [App\Http\Controllers\InventoryController::class, 'export'])
         ->name('admin.inventory.export')->middleware('check.admin');
@@ -217,6 +241,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('admin/equipment/maintenance', [App\Http\Controllers\EquipmentController::class, 'scheduleMaintenance'])
         ->name('equipment.scheduleMaintenance')->middleware('check.admin');
 
+    Route::patch('admin/equipment/maintenance/{id}/complete', [App\Http\Controllers\EquipmentController::class, 'completeMaintenance'])
+        ->name('equipment.completeMaintenance')->middleware('check.admin');
+
     Route::post('admin/equipment/{id}/mark-operational', [App\Http\Controllers\EquipmentController::class, 'markAsOperational'])
         ->name('equipment.markAsOperational')->middleware('check.admin');
 
@@ -226,6 +253,10 @@ Route::middleware(['auth'])->group(function () {
     // Equipment API for dashboard
     Route::get('api/admin/equipment/dashboard-stats', [App\Http\Controllers\EquipmentController::class, 'getDashboardStats'])
         ->name('equipment.dashboardStats')->middleware('check.admin');
+    
+    // Sales API for dashboard
+    Route::get('api/admin/sales/dashboard-stats', [App\Http\Controllers\SalesReportController::class, 'dashboardStats'])
+        ->name('sales.dashboardStats')->middleware('check.admin');
 
     // Equipment Export
     Route::get('admin/equipment/export', [App\Http\Controllers\EquipmentController::class, 'export'])
@@ -249,6 +280,9 @@ Route::middleware(['auth'])->group(function () {
 
     Route::patch('admin/employees/{id}/archive', [App\Http\Controllers\EmployeeController::class, 'archive'])
         ->name('employees.archive')->middleware('check.admin');
+
+    Route::patch('admin/employees/{id}/reset-password', [App\Http\Controllers\EmployeeController::class, 'resetPassword'])
+        ->name('employees.resetPassword')->middleware('check.admin');
     
     Route::get('admin/employees/export', [App\Http\Controllers\EmployeeController::class, 'export'])
         ->name('admin.employees.export')->middleware('check.admin');
@@ -273,50 +307,14 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('admin/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('admin.settings.profile')->middleware('check.admin');
 
-    // Admin Product Monitoring
-    Route::get('admin/product-monitoring', function () {
-        $user = Auth::user();
-        
-        // Get today's completed orders (orders completed today, not ordered today)
-        $today = Carbon::today();
-        $totalSoldToday = \App\Models\Order::where('status', 'completed')
-            ->whereDate('updated_at', $today)
-            ->sum('quantity');
-        
-        // Get production data by size for today's completed orders
-        $completedOrdersBySize = \App\Models\Order::where('status', 'completed')
-            ->whereDate('updated_at', $today)
-            ->selectRaw('size, SUM(quantity) as total_quantity')
-            ->groupBy('size')
-            ->get();
-        
-        // Create production data array with actual data
-        $productionData = [];
-        $sizeOrder = ['extra small', 'small', 'medium', 'large', 'extra large'];
-        
-        foreach ($sizeOrder as $size) {
-            $sizeData = $completedOrdersBySize->firstWhere('size', $size);
-            $productionData[] = [
-                'size' => ucwords($size) . ' Ice',
-                'quantity' => $sizeData ? (int)$sizeData->total_quantity : 0
-            ];
-        }
-        
-        return Inertia::render('admin/product-monitoring', [
-            'user' => $user,
-            'monitoring' => [
-                'totalSoldToday' => $totalSoldToday,
-                'productionData' => $productionData
-            ]
-        ]);
-    })->name('admin.product-monitoring')->middleware('check.admin');
-
     // Employee Dashboard
     Route::get('employee/dashboard', function () {
         $user = Auth::user();
         
-        // Get all orders assigned to this employee for stats
-        $orders = \App\Models\Order::where('delivery_rider_id', $user->id)->get();
+        // Get all orders assigned to this employee for stats (exclude archived orders)
+        $orders = \App\Models\Order::where('delivery_rider_id', $user->id)
+            ->where('archived', false)
+            ->get();
         
         // Calculate stats
         $totalOrders = $orders->count();
@@ -324,17 +322,19 @@ Route::middleware(['auth'])->group(function () {
         $pendingOrders = $orders->where('status', 'pending')->count();
         $onDeliveryOrders = $orders->where('status', 'out_for_delivery')->count();
         
-        // Get orders due today (orders with delivery_date = today that are not completed)
+        // Get orders due today (orders with delivery_date = today that are not completed and not archived)
         // Use database query for proper date filtering
         $dueTodayOrders = \App\Models\Order::where('delivery_rider_id', $user->id)
+            ->where('archived', false) // Exclude archived orders
             ->whereIn('status', ['pending', 'out_for_delivery'])
             ->whereDate('delivery_date', now()->toDateString())
             ->orderBy('delivery_date', 'asc')
             ->take(10)
             ->get();
             
-        // Get recent orders (latest 5)
+        // Get recent orders (latest 5, exclude archived)
         $recentOrders = \App\Models\Order::where('delivery_rider_id', $user->id)
+            ->where('archived', false) // Exclude archived orders
             ->orderBy('created_at', 'desc')
             ->take(5)
             ->get();
@@ -375,6 +375,87 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('employee/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('employee.settings.profile')->middleware('check.employee');
 });
+
+// Admin Product Monitoring (Public Access for Display Screens - No Authentication Required)
+Route::get('admin/product-monitoring', function () {
+    // Allow access without authentication for monitoring displays
+    $user = Auth::user() ?: (object)[
+        'id' => 0,
+        'name' => 'Monitoring Display',
+        'user_type' => 1
+    ];
+    
+    // Get today's completed orders (orders completed today, not ordered today)
+    $today = Carbon::today();
+    $totalSoldToday = \App\Models\Order::where('status', 'completed')
+        ->whereDate('updated_at', $today)
+        ->sum('quantity');
+    
+    // Get production data by size for today's completed orders
+    $completedOrdersBySize = \App\Models\Order::where('status', 'completed')
+        ->whereDate('updated_at', $today)
+        ->selectRaw('size, SUM(quantity) as total_quantity')
+        ->groupBy('size')
+        ->get();
+    
+    // Get available inventory sizes to only show products that exist
+    $availableInventorySizes = \App\Models\Inventory::pluck('size')->toArray();
+    
+    // Create production data array only for inventory sizes
+    $productionData = [];
+    
+    foreach ($availableInventorySizes as $size) {
+        $sizeData = $completedOrdersBySize->firstWhere('size', $size);
+        $productionData[] = [
+            'size' => ucwords($size) . ' Ice',
+            'quantity' => $sizeData ? (int)$sizeData->total_quantity : 0
+        ];
+    }
+    
+    // Get order queue data with actual order IDs and delivery information
+    $pendingOrdersData = \App\Models\Order::where('status', 'pending')
+        ->with('deliveryRider:id,name')
+        ->get(['order_id', 'delivery_mode', 'delivery_rider_id']);
+    $onDeliveryOrdersData = \App\Models\Order::where('status', 'out_for_delivery')
+        ->with('deliveryRider:id,name')
+        ->get(['order_id', 'delivery_mode', 'delivery_rider_id']);
+    
+    $pendingOrders = $pendingOrdersData->count();
+    $onDeliveryOrders = $onDeliveryOrdersData->count();
+    $totalQueueOrders = $pendingOrders + $onDeliveryOrders;
+    
+    // Extract order IDs and delivery information
+    $pendingOrderInfo = $pendingOrdersData->map(function ($order) {
+        return [
+            'order_id' => $order->order_id,
+            'delivery_mode' => $order->delivery_mode,
+            'delivery_rider' => $order->deliveryRider ? $order->deliveryRider->name : null
+        ];
+    })->toArray();
+    
+    $onDeliveryOrderInfo = $onDeliveryOrdersData->map(function ($order) {
+        return [
+            'order_id' => $order->order_id,
+            'delivery_mode' => $order->delivery_mode,
+            'delivery_rider' => $order->deliveryRider ? $order->deliveryRider->name : null
+        ];
+    })->toArray();
+    
+    return Inertia::render('admin/product-monitoring', [
+        'user' => $user,
+        'monitoring' => [
+            'totalSoldToday' => $totalSoldToday,
+            'productionData' => $productionData,
+            'orderQueue' => [
+                'totalQueue' => $totalQueueOrders,
+                'pending' => $pendingOrders,
+                'onDelivery' => $onDeliveryOrders,
+                'pendingOrderInfo' => $pendingOrderInfo,
+                'onDeliveryOrderInfo' => $onDeliveryOrderInfo
+            ]
+        ]
+    ]);
+})->name('admin.product-monitoring');
 
 // Debug route for testing order prices
 Route::get('/test-fix-prices', function () {

@@ -92,14 +92,20 @@
             font-weight: bold;
         }
         
-        .status-active {
+        .status-available {
             background-color: #d4edda;
             color: #155724;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
         }
         
-        .status-inactive {
+        .status-low-stock {
             background-color: #f8d7da;
             color: #721c24;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
         }
         
         .low-stock {
@@ -145,7 +151,7 @@
             <div class="summary-label">Total Items</div>
         </div>
         <div class="summary-item">
-            <div class="summary-value">₱{{ number_format($totalValue, 2) }}</div>
+            <div class="summary-value">PHP{{ number_format($totalValue, 2) }}</div>
             <div class="summary-label">Total Inventory Value</div>
         </div>
         <div class="summary-item">
@@ -179,9 +185,15 @@
                     </td>
                     <td class="text-right">PHP{{ ($item->price && $item->quantity) ? number_format((float)$item->price * (int)$item->quantity, 2) : '0.00' }}</td>
                     <td class="text-center">
-                        <span class="status {{ $item->status === 'active' ? 'status-active' : 'status-inactive' }}">
-                            {{ ucfirst($item->status) }}
-                        </span>
+                        @if($item->quantity < 10)
+                            <span class="status status-low-stock">
+                                Low on stocks
+                            </span>
+                        @else
+                            <span class="status status-available">
+                                Available
+                            </span>
+                        @endif
                     </td>
                     <td>{{ $item->date_created ? \Carbon\Carbon::parse($item->date_created)->format('M j, Y') : 'N/A' }}</td>
                 </tr>

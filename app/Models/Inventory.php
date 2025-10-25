@@ -23,13 +23,15 @@ class Inventory extends Model
         'price',
         'quantity',
         'status',
-        'date_created'
+        'date_created',
+        'archived_at'
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'quantity' => 'integer',
-        'date_created' => 'date'
+        'date_created' => 'date',
+        'archived_at' => 'datetime'
     ];
 
     public $timestamps = false;

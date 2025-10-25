@@ -107,6 +107,47 @@ class EquipmentController extends Controller
     }
 
     /**
+     * Complete maintenance record
+     */
+    public function completeMaintenance($id)
+    {
+        $maintenance = Maintenance::findOrFail($id);
+        $equipment = $maintenance->equipment;
+        
+        // Update maintenance status to completed
+        $maintenance->update(['status' => 'completed']);
+        
+        // Check if there are any other scheduled maintenances for this equipment
+        $pendingMaintenance = Maintenance::where('equipment_id', $equipment->id)
+            ->whereIn('status', ['scheduled', 'in_progress'])
+            ->exists();
+        
+        // If no pending maintenance, mark equipment as operational
+        if (!$pendingMaintenance) {
+            $equipment->update(['status' => 'operational']);
+        }
+
+        // Log the activity
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'maintenance_completed',
+                "Completed {$maintenance->maintenance_type} maintenance for {$equipment->equipment_name}",
+                $equipment,
+                [
+                    'maintenance_id' => $maintenance->id,
+                    'maintenance_type' => $maintenance->maintenance_type,
+                    'equipment_name' => $equipment->equipment_name,
+                    'equipment_type' => $equipment->equipment_type,
+                    'completion_date' => now()->format('Y-m-d H:i:s')
+                ],
+                auth()->user()->id
+            );
+        }
+
+        return redirect()->back()->with('success', 'Maintenance completed successfully!');
+    }
+
+    /**
      * Mark equipment as operational (maintenance completed)
      */
     public function markAsOperational($id)
@@ -245,7 +286,7 @@ class EquipmentController extends Controller
             'generatedAt' => now()->format('F j, Y \a\t g:i A'),
         ]);
 
-        $filename = 'equipment-report-' . date('Y-m-d') . '.pdf';
+        $filename = 'maintenance-report-' . date('Y-m-d') . '.pdf';
         return $pdf->download($filename);
     }
 }

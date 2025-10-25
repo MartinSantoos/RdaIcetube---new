@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { BarChart3, Package, Settings, ShoppingCart, Users, Plus, Download, X, CheckCircle, Edit, Trash2, UserX, UserCheck, AlertTriangle, Search, LogOut, MoreHorizontal, Menu } from 'lucide-react';
+import { BarChart3, Package, Cog, Settings, ShoppingCart, Users, Plus, Download, X, CheckCircle, Edit, Trash2, UserX, UserCheck, AlertTriangle, Search, LogOut, MoreHorizontal, Menu } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface User {
     id: number;
@@ -37,6 +37,7 @@ interface Employee {
     position: string;
     status: string;
     contact: string;
+    user_type: number;
     archived?: boolean;
 }
 
@@ -50,7 +51,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-    const [confirmDialog, setConfirmDialog] = useState<{open: boolean, type: 'archive' | 'disable' | 'enable' | null, employee: Employee | null}>({
+    const [confirmDialog, setConfirmDialog] = useState<{open: boolean, type: 'archive' | 'disable' | 'enable' | 'delete' | 'restore' | null, employee: Employee | null}>({
         open: false,
         type: null,
         employee: null
@@ -59,6 +60,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
     const isMobile = useIsMobile();
     
     const handleLogout = () => {
@@ -99,6 +101,47 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     // Form for toggle status
     const toggleForm = useForm();
 
+    // CSS overrides for select component visibility in employee modal
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.textContent = `
+            /* Employee Modal Select Element Visibility */
+            .employee-modal select,
+            .employee-modal option {
+                color: #111827 !important;
+                background-color: white !important;
+            }
+            
+            .employee-modal select:hover {
+                background-color: #f9fafb !important;
+            }
+            
+            .employee-modal select:focus {
+                color: #111827 !important;
+                background-color: white !important;
+            }
+            
+            /* Additional Radix UI Select overrides if present */
+            [data-radix-select-trigger],
+            [data-radix-select-value],
+            [data-radix-select-content],
+            [data-radix-select-item] {
+                color: #111827 !important;
+                background-color: white !important;
+            }
+            
+            [data-radix-select-item]:hover {
+                background-color: #f3f4f6 !important;
+                color: #111827 !important;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        return () => {
+            document.head.removeChild(style);
+        };
+    }, []);
+
     // Contact number validation
     const validateContactNumber = (contact: string) => {
         if (!contact) return 'Contact number is required';
@@ -124,7 +167,14 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     const filteredEmployees = employees.filter(emp => 
         emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         emp.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.contact.includes(searchTerm)
+        emp.id.toString().includes(searchTerm)
+    );
+
+    // Filter archived employees based on search term
+    const filteredArchivedEmployees = archivedEmployees.filter(emp => 
+        emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.id.toString().includes(searchTerm)
     );
 
     // Add new employee
@@ -166,7 +216,17 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     const handleRestoreEmployee = (employee: Employee) => {
         archiveForm.patch(`/admin/employees/${employee.id}/restore`, {
             onSuccess: () => {
+                setConfirmDialog({ open: false, type: null, employee: null });
                 // Optionally show success message
+            }
+        });
+    };
+
+    // Permanently delete employee
+    const handlePermanentDeleteEmployee = (employee: Employee) => {
+        archiveForm.delete(`/admin/employees/${employee.id}/force-delete`, {
+            onSuccess: () => {
+                setConfirmDialog({ open: false, type: null, employee: null });
             }
         });
     };
@@ -199,9 +259,27 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     const resetForm = () => {
         reset();
         setContactError('');
+        setSuccessMessage(''); // Clear success message
         setIsModalOpen(false);
         setIsEditMode(false);
         setEditingEmployee(null);
+    };
+
+    // Reset employee password to default
+    const resetEmployeePassword = () => {
+        if (isEditMode && editingEmployee) {
+            router.patch(`/admin/employees/${editingEmployee.id}/reset-password`, {}, {
+                onSuccess: () => {
+                    setData('password', '123'); // Update form to show default password
+                    setSuccessMessage('Employee password has been reset to default (123).');
+                    // Clear success message after 5 seconds
+                    setTimeout(() => setSuccessMessage(''), 5000);
+                },
+                onError: (errors) => {
+                    console.error('Failed to reset password:', errors);
+                }
+            });
+        }
     };
 
     // Open confirmation dialog
@@ -213,7 +291,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
         <div className="min-h-screen bg-gray-50">
             <Head title="Employees - RDA Tube Ice" />
             {/* Header */}
-            <header className="bg-blue-600 text-white shadow-lg relative z-50">
+            <header className="bg-blue-600 text-white shadow-lg sticky top-0 z-50">
                 <div className="flex items-center justify-between px-4 md:px-6 py-4">
                     <div className="flex items-center space-x-4">
                         {isMobile && (
@@ -248,11 +326,12 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                 </div>
             </header>
             
-            <div className="flex relative">
-                {/* Mobile Overlay */}
+            <div className="flex relative" style={{ display: 'flex', position: 'relative' }}>
+                {/* Mobile Sidebar Overlay */}
                 {isMobile && sidebarOpen && (
                     <div 
-                        className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+                        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 40 }}
                         onClick={() => setSidebarOpen(false)}
                     />
                 )}
@@ -263,7 +342,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                         ? `fixed top-0 left-0 z-50 w-64 h-full bg-blue-600 transform transition-transform duration-300 ease-in-out ${
                             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
                         }` 
-                        : 'w-64 bg-blue-600 min-h-screen'
+                        : 'fixed top-16 left-0 z-40 w-64 h-[calc(100vh-4rem)] bg-blue-600 overflow-y-auto'
                     } text-white
                 `}>
                     <div className="p-6">
@@ -319,7 +398,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <Settings className="w-5 h-5" />
+                                    <Cog className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
                                 <Link 
@@ -360,27 +439,28 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                 </aside>
                 
                 {/* Main Content */}
-                <main className="flex-1 p-4 md:p-8 w-full min-w-0">
+                <main className={`flex-1 p-4 md:p-8 w-full min-w-0 ${isMobile ? '' : 'ml-64'}`}>
+                    {/* Page Header */}
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <div className="flex flex-col space-y-4 md:space-y-0 md:flex-row md:items-center justify-between">
                             <div>
                                 <h1 className="text-2xl md:text-3xl font-bold mb-2">Employees</h1>
                                 <p className="text-blue-100 text-sm md:text-base">Manage and track Employees</p>
                             </div>
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                                 <Button onClick={() => {
                                     reset();
                                     setIsEditMode(false);
                                     setEditingEmployee(null);
                                     setIsModalOpen(true);
-                                }} variant="secondary" size="sm">
+                                }} variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 text-sm md:text-base">
                                     <Plus className="h-4 w-4 mr-2" />
                                     <span className="hidden sm:inline">Add Employee</span>
-                                    <span className="sm:hidden">Add</span>
+                                    <span className="sm:hidden">Add Employee</span>
                                 </Button>
                                 <Button 
                                     variant="secondary" 
-                                    size="sm"
+                                    className="bg-white text-blue-600 hover:bg-gray-100 text-sm md:text-base"
                                     onClick={() => setIsExportModalOpen(true)}
                                 >
                                     <Download className="h-4 w-4 mr-2" />
@@ -393,12 +473,22 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                     {/* Content Area */}
                     <div className="bg-white rounded-lg shadow">
                         <div className="p-4 md:p-6">
-                            <h3 className="text-base md:text-lg font-semibold mb-4">Employees</h3>
+                            <h3 className="text-base md:text-lg font-semibold mb-4 text-gray-900">Employees</h3>
                             {/* Tabs */}
                             <Tabs defaultValue="employees" className="mb-6">
-                                <TabsList className="grid w-fit grid-cols-2">
-                                    <TabsTrigger value="employees">Employees</TabsTrigger>
-                                    <TabsTrigger value="archives">Archives</TabsTrigger>
+                                <TabsList className="grid w-fit grid-cols-2 bg-gray-200 p-1 rounded-xl h-12">
+                                    <TabsTrigger 
+                                        value="employees" 
+                                        className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                    >
+                                        Employees
+                                    </TabsTrigger>
+                                    <TabsTrigger 
+                                        value="archives" 
+                                        className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                    >
+                                        Archives
+                                    </TabsTrigger>
                                 </TabsList>
                                 
                                 <TabsContent value="employees" className="mt-6">
@@ -512,7 +602,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                     <div className="flex justify-between items-start">
                                                         <div>
                                                             <h4 className="font-semibold text-gray-900">{emp.name}</h4>
-                                                            <p className="text-sm text-gray-600">ID: {emp.id}</p>
+                                                            <p className="text-sm text-gray-700">ID: {emp.id}</p>
                                                         </div>
                                                         <div className="flex items-center space-x-2">
                                                             <StatusBadge status={emp.status} size="sm" />
@@ -561,12 +651,12 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                     </div>
                                                     <div className="grid grid-cols-2 gap-3 text-sm">
                                                         <div>
-                                                            <span className="text-gray-500">Position:</span>
-                                                            <p className="font-medium">{emp.position}</p>
+                                                            <span className="text-gray-700">Position:</span>
+                                                            <p className="font-medium text-gray-900">{emp.position}</p>
                                                         </div>
                                                         <div>
-                                                            <span className="text-gray-500">Contact:</span>
-                                                            <p className="font-medium">{emp.contact}</p>
+                                                            <span className="text-gray-700">Contact:</span>
+                                                            <p className="font-medium text-gray-900">{emp.contact}</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -577,26 +667,48 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                 </TabsContent>
                                 
                                 <TabsContent value="archives">
+                                    {/* Search */}
+                                    <div className="flex justify-between items-center mb-4 gap-4">
+                                        <div className="flex-1 md:flex-none">
+                                            <div className="relative w-full md:w-64">
+                                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                                                <Input
+                                                    type="search"
+                                                    placeholder="Search archived employees..."
+                                                    className="pl-10 text-sm"
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {archivedEmployees.length === 0 ? (
                                         <div className="text-center py-8 text-gray-500">
                                             No archived employees found.
                                         </div>
+                                    ) : filteredArchivedEmployees.length === 0 ? (
+                                        <div className="text-center py-8 text-gray-500">
+                                            No archived employees match your search.
+                                        </div>
                                     ) : (
                                         <>
-                                            {/* Desktop Archives Table */}
-                                            <div className="hidden md:block overflow-x-auto">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead className="font-semibold">Employee ID</TableHead>
-                                                            <TableHead className="font-semibold">Name</TableHead>
-                                                            <TableHead className="font-semibold">Position</TableHead>
-                                                            <TableHead className="font-semibold">Contact</TableHead>
-                                                            <TableHead className="font-semibold">Actions</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {archivedEmployees.map(emp => (
+                                            {/* Archived Employees Table/Cards */}
+                                            <div>
+                                                {/* Desktop Archives Table */}
+                                                <div className="hidden md:block overflow-x-auto">
+                                                    <Table>
+                                                        <TableHeader>
+                                                            <TableRow>
+                                                                <TableHead className="font-semibold">Employee ID</TableHead>
+                                                                <TableHead className="font-semibold">Name</TableHead>
+                                                                <TableHead className="font-semibold">Position</TableHead>
+                                                                <TableHead className="font-semibold">Contact</TableHead>
+                                                                <TableHead className="font-semibold">Actions</TableHead>
+                                                            </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {filteredArchivedEmployees.map(emp => (
                                                             <TableRow key={emp.id} className="hover:bg-gray-50 bg-gray-50">
                                                                 <TableCell className="font-medium text-gray-600">{emp.id}</TableCell>
                                                                 <TableCell className="font-medium text-gray-600">{emp.name}</TableCell>
@@ -616,11 +728,18 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                                         </DropdownMenuTrigger>
                                                                         <DropdownMenuContent align="end" className="w-48">
                                                                             <DropdownMenuItem 
-                                                                                onClick={() => handleRestoreEmployee(emp)}
+                                                                                onClick={() => setConfirmDialog({ open: true, type: 'restore', employee: emp })}
                                                                                 className="text-green-600"
                                                                             >
                                                                                 <UserCheck className="mr-2 h-4 w-4" />
                                                                                 Restore Employee
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => setConfirmDialog({ open: true, type: 'delete', employee: emp })}
+                                                                                className="text-red-600"
+                                                                            >
+                                                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                                                Delete Permanently
                                                                             </DropdownMenuItem>
                                                                         </DropdownMenuContent>
                                                                     </DropdownMenu>
@@ -633,12 +752,12 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                             
                                             {/* Mobile Archive Cards */}
                                             <div className="md:hidden space-y-4">
-                                                {archivedEmployees.map(emp => (
+                                                {filteredArchivedEmployees.map(emp => (
                                                     <div key={emp.id} className="bg-gray-100 rounded-lg p-4 space-y-3">
                                                         <div className="flex justify-between items-start">
                                                             <div>
                                                                 <h4 className="font-semibold text-gray-700">{emp.name}</h4>
-                                                                <p className="text-sm text-gray-500">ID: {emp.id}</p>
+                                                                <p className="text-sm text-gray-600">ID: {emp.id}</p>
                                                             </div>
                                                             <div className="flex items-center space-x-2">
                                                                 <Badge variant="destructive">Archived</Badge>
@@ -655,11 +774,18 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                                     </DropdownMenuTrigger>
                                                                     <DropdownMenuContent align="end" className="w-48">
                                                                         <DropdownMenuItem 
-                                                                            onClick={() => handleRestoreEmployee(emp)}
+                                                                            onClick={() => setConfirmDialog({ open: true, type: 'restore', employee: emp })}
                                                                             className="text-green-600"
                                                                         >
                                                                             <UserCheck className="mr-2 h-4 w-4" />
                                                                             Restore Employee
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => setConfirmDialog({ open: true, type: 'delete', employee: emp })}
+                                                                            className="text-red-600"
+                                                                        >
+                                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                                            Delete Permanently
                                                                         </DropdownMenuItem>
                                                                     </DropdownMenuContent>
                                                                 </DropdownMenu>
@@ -667,16 +793,17 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-3 text-sm">
                                                             <div>
-                                                                <span className="text-gray-500">Position:</span>
-                                                                <p className="font-medium text-gray-700">{emp.position}</p>
+                                                                <span className="text-gray-600">Position:</span>
+                                                                <p className="font-medium text-gray-800">{emp.position}</p>
                                                             </div>
                                                             <div>
-                                                                <span className="text-gray-500">Contact:</span>
-                                                                <p className="font-medium text-gray-700">{emp.contact}</p>
+                                                                <span className="text-gray-600">Contact:</span>
+                                                                <p className="font-medium text-gray-800">{emp.contact}</p>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 ))}
+                                            </div>
                                             </div>
                                         </>
                                     )}
@@ -686,25 +813,42 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                     </div>
 
                     {/* Employee Modal */}
-                    {isModalOpen && (
-                        <>
-                            <div className="fixed inset-0 flex items-center justify-center z-50"></div>
-                            <div className="fixed inset-0 flex items-center justify-center z-50">
-                                <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg m-4">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <div>
-                                            <h3 className="text-lg font-semibold">
-                                                {isEditMode ? 'Edit Employee' : 'Add New Employee'}
-                                            </h3>
-                                            <p className="text-sm text-gray-600">
-                                                {isEditMode ? 'Update employee information' : 'Create new employee account'}
-                                            </p>
-                                        </div>
-                                        <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
-                                            <X className="h-5 w-5" />
-                                        </button>
-                                    </div>
-                                    <form onSubmit={isEditMode ? handleEditEmployee : handleAddEmployee} className="space-y-4">
+                    <Dialog open={isModalOpen} onOpenChange={(open) => !open && resetForm()}>
+                        <DialogContent className="sm:max-w-lg employee-modal">
+                            <DialogHeader>
+                                <DialogTitle>
+                                    {isEditMode ? 'Update employee information' : 'Add employee account'}
+                                </DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={isEditMode ? handleEditEmployee : handleAddEmployee} className="space-y-4">
+                                        {/* Success Message */}
+                                        {successMessage && (
+                                            <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                                                <div className="flex">
+                                                    <div className="flex-shrink-0">
+                                                        <CheckCircle className="h-5 w-5 text-green-400" />
+                                                    </div>
+                                                    <div className="ml-3">
+                                                        <p className="text-sm text-green-800">{successMessage}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* General Error Message */}
+                                        {(errors as any).general && (
+                                            <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                                                <div className="flex">
+                                                    <div className="flex-shrink-0">
+                                                        <X className="h-5 w-5 text-red-400" />
+                                                    </div>
+                                                    <div className="ml-3">
+                                                        <p className="text-sm text-red-800">{(errors as any).general}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
                                         <div>
                                             <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name *</label>
                                             <Input 
@@ -729,11 +873,15 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                 className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                                     errors.position ? 'border-red-300' : 'border-gray-300'
                                                 }`}
+                                                style={{ 
+                                                    color: '#111827', 
+                                                    backgroundColor: 'white',
+                                                    fontSize: '0.875rem'
+                                                }}
                                                 required
                                             >
-                                                <option value="Delivery Rider">Delivery Rider</option>
-                                                <option value="Ice Maker">Ice Maker</option>
-                                                <option value="Admin">Admin</option>
+                                                <option value="Delivery Rider" style={{ color: '#111827', backgroundColor: 'white' }}>Delivery Rider</option>
+                                                <option value="Admin" style={{ color: '#111827', backgroundColor: 'white' }}>Admin</option>
                                             </select>   
                                             {errors.position && (
                                                 <p className="text-sm text-red-600 mt-1">{errors.position}</p>
@@ -789,78 +937,96 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                             <Button type="button" variant="outline" onClick={resetForm} disabled={processing}>
                                                 Cancel
                                             </Button>
+                                            {isEditMode && (
+                                                <Button type="button" variant="secondary" onClick={resetEmployeePassword} disabled={processing}>
+                                                    Reset Password
+                                                </Button>
+                                            )}
                                             <Button type="submit" variant="default" disabled={processing}>
                                                 {processing ? 'Saving...' : (isEditMode ? 'Update Employee' : 'Add Employee')}
                                             </Button>
                                         </div>
                                     </form>
-                                </div>
-                            </div>
-                        </>
-                    )}
+                        </DialogContent>
+                    </Dialog>
                     
                     {/* Confirmation Dialog */}
-                    {confirmDialog.open && confirmDialog.employee && (
-                        <>
-                            <div className="fixed inset-0 flex items-center justify-center z-50"></div>
-                            <div className="fixed inset-0 flex items-center justify-center z-50">
-                                <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md m-4">
-                                    <div className="flex items-center mb-4">
-                                        <AlertTriangle className="h-6 w-6 text-amber-500 mr-3" />
-                                        <h3 className="text-lg font-semibold">
-                                            {confirmDialog.type === 'archive' && 'Archive Employee'}
-                                            {confirmDialog.type === 'disable' && 'Disable Employee'}
-                                            {confirmDialog.type === 'enable' && 'Enable Employee'}
-                                        </h3>
-                                    </div>
-                                    <p className="text-gray-600 mb-6">
-                                        {confirmDialog.type === 'archive' && 
-                                            `Are you sure you want to archive "${confirmDialog.employee.name}"? They will be moved to the archives and can be restored later.`
-                                        }
-                                        {confirmDialog.type === 'disable' && 
-                                            `Are you sure you want to disable "${confirmDialog.employee.name}"? They will no longer be able to access the system.`
-                                        }
-                                        {confirmDialog.type === 'enable' && 
-                                            `Are you sure you want to enable "${confirmDialog.employee.name}"? They will regain access to the system.`
-                                        }
-                                    </p>
-                                    <div className="flex justify-end space-x-2">
-                                        <Button 
-                                            type="button" 
-                                            variant="outline" 
-                                            onClick={() => setConfirmDialog({ open: false, type: null, employee: null })}
-                                            disabled={archiveForm.processing || toggleForm.processing}
-                                        >
-                                            Cancel
-                                        </Button>
-                                        <Button 
-                                            type="button" 
-                                            className={
-                                                confirmDialog.type === 'archive' 
-                                                    ? "bg-orange-600 hover:bg-orange-700" 
-                                                    : confirmDialog.type === 'disable'
-                                                    ? "bg-amber-600 hover:bg-amber-700"
-                                                    : "bg-green-600 hover:bg-green-700"
+                    <Dialog open={confirmDialog.open} onOpenChange={(open) => !open && setConfirmDialog({ open: false, type: null, employee: null })}>
+                        <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center">
+                                    <AlertTriangle className="h-6 w-6 text-amber-500 mr-3" />
+                                    {confirmDialog.type === 'archive' && 'Archive Employee'}
+                                    {confirmDialog.type === 'disable' && 'Disable Employee'}
+                                    {confirmDialog.type === 'enable' && 'Enable Employee'}
+                                    {confirmDialog.type === 'delete' && 'Delete Employee Permanently'}
+                                    {confirmDialog.type === 'restore' && 'Restore Employee'}
+                                </DialogTitle>
+                                <DialogDescription>
+                                    {confirmDialog.employee && (
+                                        <>
+                                            {confirmDialog.type === 'archive' && 
+                                                `Are you sure you want to archive "${confirmDialog.employee.name}"? They will be moved to the archives and can be restored later.`
                                             }
-                                            disabled={archiveForm.processing || toggleForm.processing}
-                                            onClick={() => {
-                                                if (confirmDialog.type === 'archive') {
-                                                    handleArchiveEmployee(confirmDialog.employee!);
-                                                } else {
-                                                    handleToggleEmployeeStatus(confirmDialog.employee!);
-                                                }
-                                            }}
-                                        >
-                                            {(archiveForm.processing || toggleForm.processing) ? 'Processing...' : (
-                                                confirmDialog.type === 'archive' ? 'Archive' : 
-                                                confirmDialog.type === 'disable' ? 'Disable' : 'Enable'
-                                            )}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
-                    )}
+                                            {confirmDialog.type === 'disable' && 
+                                                `Are you sure you want to disable "${confirmDialog.employee.name}"? They will no longer be able to access the system.`
+                                            }
+                                            {confirmDialog.type === 'enable' && 
+                                                `Are you sure you want to enable "${confirmDialog.employee.name}"? They will regain access to the system.`
+                                            }
+                                            {confirmDialog.type === 'delete' && 
+                                                `Are you sure you want to permanently delete "${confirmDialog.employee.name}"? This action cannot be undone and all data will be lost forever.`
+                                            }
+                                            {confirmDialog.type === 'restore' && 
+                                                `Are you sure you want to restore "${confirmDialog.employee.name}"? They will be moved back to active employees and regain access to the system.`
+                                            }
+                                        </>
+                                    )}
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="gap-2">
+                                <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    onClick={() => setConfirmDialog({ open: false, type: null, employee: null })}
+                                    disabled={archiveForm.processing || toggleForm.processing}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button 
+                                    type="button" 
+                                    className={
+                                        confirmDialog.type === 'archive' 
+                                            ? "bg-orange-600 hover:bg-orange-700" 
+                                            : confirmDialog.type === 'disable'
+                                            ? "bg-amber-600 hover:bg-amber-700"
+                                            : confirmDialog.type === 'delete'
+                                            ? "bg-red-600 hover:bg-red-700"
+                                            : "bg-green-600 hover:bg-green-700"
+                                    }
+                                    disabled={archiveForm.processing || toggleForm.processing}
+                                    onClick={() => {
+                                        if (confirmDialog.type === 'archive' && confirmDialog.employee) {
+                                            handleArchiveEmployee(confirmDialog.employee);
+                                        } else if (confirmDialog.type === 'delete' && confirmDialog.employee) {
+                                            handlePermanentDeleteEmployee(confirmDialog.employee);
+                                        } else if (confirmDialog.type === 'restore' && confirmDialog.employee) {
+                                            handleRestoreEmployee(confirmDialog.employee);
+                                        } else if (confirmDialog.employee) {
+                                            handleToggleEmployeeStatus(confirmDialog.employee);
+                                        }
+                                    }}
+                                >
+                                    {(archiveForm.processing || toggleForm.processing) ? 'Processing...' : (
+                                        confirmDialog.type === 'archive' ? 'Archive' : 
+                                        confirmDialog.type === 'disable' ? 'Disable' : 
+                                        confirmDialog.type === 'delete' ? 'Delete Permanently' : 
+                                        confirmDialog.type === 'restore' ? 'Restore' : 'Enable'
+                                    )}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </main>
             </div>
 

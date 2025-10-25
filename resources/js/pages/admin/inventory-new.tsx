@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { Package, Plus, AlertTriangle, CheckCircle, X, Search, Download, BarChart3, Settings, LogOut, Home, ShoppingCart, ClipboardList, Users, Menu } from 'lucide-react';
+import { Package, Plus, AlertTriangle, CheckCircle, X, Search, Download, BarChart3, Cog, Settings, LogOut, Home, ShoppingCart, ClipboardList, Users, Menu, Trash2, Archive, RotateCcw, MoreHorizontal, Edit } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,14 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useState, useEffect } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 interface User {
     id: number;
@@ -40,14 +47,16 @@ interface InventoryItem {
     quantity: number;
     date_created: string;
     status: string;
+    archived_at?: string;
 }
 
 interface InventoryProps {
     user: User;
     inventory: InventoryItem[];
+    archivedInventory?: InventoryItem[];
 }
 
-export default function InventoryWorking({ user, inventory = [] }: InventoryProps) {
+export default function InventoryWorking({ user, inventory = [], archivedInventory = [] }: InventoryProps) {
     const [showUpdateStockModal, setShowUpdateStockModal] = useState(false);
     const [showAddInventoryModal, setShowAddInventoryModal] = useState(false);
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -61,6 +70,15 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+    const [confirmDialog, setConfirmDialog] = useState<{open: boolean, type: 'restore' | 'delete' | null, item: InventoryItem | null}>({
+        open: false,
+        type: null,
+        item: null
+    });
+    const [archiveDialog, setArchiveDialog] = useState<{open: boolean, item: InventoryItem | null}>({
+        open: false,
+        item: null
+    });
     const isMobile = useIsMobile();
 
     const handleLogout = () => {
@@ -102,6 +120,15 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
         return existingItem ? { exists: true, item: existingItem } : { exists: false, item: null };
     };
 
+    // Check if a product name and size combination already exists
+    const getProductSizeCombinationStatus = (productName: string, size: string) => {
+        const existingItem = inventory.find(item => 
+            item.product_name.toLowerCase() === productName.toLowerCase() && 
+            item.size.toLowerCase() === size.toLowerCase()
+        );
+        return existingItem ? { exists: true, item: existingItem } : { exists: false, item: null };
+    };
+
     // Get all available size options (default + existing custom sizes)
     const getAllSizeOptions = () => {
         const defaultSizes = getDefaultSizes();
@@ -139,6 +166,21 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
         quantity: ''
     });
 
+    const {
+        delete: deleteItem,
+        processing: deleteProcessing
+    } = useForm({});
+
+    const {
+        patch: archiveItem,
+        processing: archiveProcessing
+    } = useForm({});
+
+    const {
+        patch: restoreItem,
+        processing: restoreProcessing
+    } = useForm({});
+
     const handleUpdateStock = (item: InventoryItem) => {
         setSelectedItem(item);
         setSelectedItemId(item.inventory_id);
@@ -168,10 +210,10 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
         // Clear previous size error
         setSizeError('');
         
-        // Check for duplicate size before submitting
-        const sizeStatus = getSizeStatus(addData.size);
-        if (sizeStatus.exists) {
-            setSizeError(`A product with size "${addData.size}" already exists in the inventory (${sizeStatus.item?.product_name}). Please choose a different size.`);
+        // Check for duplicate product name and size combination before submitting
+        const combinationStatus = getProductSizeCombinationStatus(addData.product_name, addData.size);
+        if (combinationStatus.exists) {
+            setSizeError(`A product with the name "${addData.product_name}" and size "${addData.size}" already exists in the inventory. Please choose a different product name or size combination.`);
             return;
         }
         
@@ -231,11 +273,105 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                 // Show error message if there's a validation error
                 if (errors.quantity) {
                     // Keep modal open to show error
+                    console.log('Quantity error:', errors.quantity);
                 }
             }
         });
     };
 
+    const handleArchiveInventory = (inventory_id: number) => {
+        archiveItem(`/admin/inventory/${inventory_id}/archive`, {
+            onSuccess: () => {
+                setShowUpdateStockModal(false);
+                setSelectedItem(null);
+                setSelectedItemId(null);
+                setArchiveDialog({ open: false, item: null });
+                
+                // Show success message
+                setSuccessMessage('Inventory item archived successfully!');
+                setShowSuccess(true);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 3000);
+
+                // Force reload
+                setTimeout(() => {
+                    window.location.reload();
+                }, 100);
+            },
+            onError: (errors: any) => {
+                console.error('Archive failed:', errors);
+                alert('Failed to archive inventory item. Please try again.');
+            }
+        });
+    };
+
+    const handleRestoreInventory = (inventory_id: number) => {
+        restoreItem(`/admin/inventory/${inventory_id}/restore`, {
+            onSuccess: () => {
+                closeConfirmDialog();
+                // Show success message
+                setSuccessMessage('Inventory item restored successfully!');
+                setShowSuccess(true);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 3000);
+
+                // Force reload
+                setTimeout(() => {
+                    window.location.reload();
+                }, 100);
+            },
+            onError: (errors: any) => {
+                console.error('Restore failed:', errors);
+                alert('Failed to restore inventory item. Please try again.');
+            }
+        });
+    };
+
+    const handleDeleteInventory = (inventory_id: number) => {
+        deleteItem(`/admin/inventory/${inventory_id}`, {
+            onSuccess: () => {
+                closeConfirmDialog();
+                // Show success message
+                setSuccessMessage('Inventory item deleted permanently!');
+                setShowSuccess(true);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 3000);
+
+                // Force reload
+                setTimeout(() => {
+                    window.location.reload();
+                }, 100);
+            },
+            onError: (errors: any) => {
+                console.error('Delete failed:', errors);
+                alert('Failed to delete inventory item. Please try again.');
+            }
+        });
+    };
+
+    // Open confirmation dialogs
+    const openConfirmDialog = (type: 'restore' | 'delete', item: InventoryItem) => {
+        setConfirmDialog({ open: true, type, item });
+    };
+
+    const closeConfirmDialog = () => {
+        setConfirmDialog({ open: false, type: null, item: null });
+    };
+
+    // Open archive dialog
+    const openArchiveDialog = (item: InventoryItem) => {
+        setArchiveDialog({ open: true, item });
+    };
+
+    const closeArchiveDialog = () => {
+        setArchiveDialog({ open: false, item: null });
+    };
   
     useEffect(() => {
         if (showSuccess) {
@@ -271,12 +407,98 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
         return <Badge variant="default">{status}</Badge>;
     };
 
+    // Add CSS overrides for select components with proper hover states
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.textContent = `
+            /* Force visible text in all select components */
+            [data-radix-select-trigger] {
+                color: #111827 !important;
+                background-color: white !important;
+                border: 1px solid #d1d5db !important;
+            }
+            [data-radix-select-value] {
+                color: #111827 !important;
+                opacity: 1 !important;
+            }
+            [data-radix-select-content] {
+                background-color: white !important;
+                border: 1px solid #d1d5db !important;
+                z-index: 9999 !important;
+            }
+            [data-radix-select-item] {
+                color: #111827 !important;
+                background-color: white !important;
+                padding: 0.5rem !important;
+            }
+            [data-radix-select-item]:hover,
+            [data-radix-select-item][data-highlighted] {
+                background-color: #e5e7eb !important;
+                color: #111827 !important;
+            }
+            [data-radix-select-item]:focus {
+                background-color: #e5e7eb !important;
+                color: #111827 !important;
+                outline: none !important;
+            }
+            /* Alternative selectors */
+            .select-trigger, .select-trigger * {
+                color: #111827 !important;
+                background-color: white !important;
+            }
+            .select-value, .select-value * {
+                color: #111827 !important;
+                opacity: 1 !important;
+            }
+            .select-content, .select-content * {
+                color: #111827 !important;
+                background-color: white !important;
+            }
+            .select-item, .select-item * {
+                color: #111827 !important;
+                background-color: white !important;
+            }
+            .select-item:hover, .select-item:hover * {
+                color: #111827 !important;
+                background-color: #e5e7eb !important;
+            }
+            /* Shadcn UI specific overrides */
+            .relative button[role="combobox"] {
+                color: #111827 !important;
+                background-color: white !important;
+            }
+            .relative button[role="combobox"] span {
+                color: #111827 !important;
+                opacity: 1 !important;
+            }
+            div[role="listbox"] {
+                background-color: white !important;
+            }
+            div[role="option"] {
+                color: #111827 !important;
+                background-color: white !important;
+            }
+            div[role="option"]:hover,
+            div[role="option"][data-highlighted="true"] {
+                color: #111827 !important;
+                background-color: #e5e7eb !important;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        return () => {
+            if (document.head.contains(style)) {
+                document.head.removeChild(style);
+            }
+        };
+    }, []);
+
     return (
         <div className="min-h-screen bg-gray-50">
             <Head title="Inventory - RDA Tube Ice" />
             
             {/* Header */}
-            <header className="bg-blue-600 text-white shadow-lg relative z-50">
+            <header className="bg-blue-600 text-white shadow-lg sticky top-0 z-50">
                 <div className="flex items-center justify-between px-4 md:px-6 py-4">
                     <div className="flex items-center space-x-4">
                         {isMobile && (
@@ -309,11 +531,12 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                 </div>
             </header>
 
-            <div className="flex relative">
-                {/* Mobile Overlay */}
+            <div className="flex relative" style={{ display: 'flex', position: 'relative' }}>
+                {/* Mobile Sidebar Overlay */}
                 {isMobile && sidebarOpen && (
                     <div 
-                        className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+                        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 40 }}
                         onClick={() => setSidebarOpen(false)}
                     />
                 )}
@@ -324,7 +547,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                         ? `fixed top-0 left-0 z-50 w-64 h-full bg-blue-600 transform transition-transform duration-300 ease-in-out ${
                             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
                         }` 
-                        : 'w-64 bg-blue-600 min-h-screen'
+                        : 'fixed top-16 left-0 z-40 w-64 h-[calc(100vh-4rem)] bg-blue-600 overflow-y-auto'
                     } text-white
                 `}>
                     <div className="p-6">
@@ -380,7 +603,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <Settings className="w-5 h-5" />
+                                    <Cog className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
                                 <Link 
@@ -421,7 +644,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                 </aside>
 
                 {/* Main Content */}
-                <main className="flex-1 p-4 md:p-8 w-full min-w-0">
+                <main className={`flex-1 p-4 md:p-8 w-full min-w-0 ${isMobile ? '' : 'ml-64'}`}>
                     {/* Success Alert */}
                     {showSuccess && (
                         <div className="mb-4 md:mb-6">
@@ -441,20 +664,20 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                 <h1 className="text-2xl md:text-3xl font-bold mb-2">Inventory</h1>
                                 <p className="text-blue-100 text-sm md:text-base">Manage and track Inventory</p>
                             </div>
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                                 <Button 
                                     onClick={handleAddInventory}
                                     variant="secondary"
-                                    size="sm"
+                                    className="bg-white text-blue-600 hover:bg-gray-100 text-sm md:text-base"
                                     title="Add new inventory item"
                                 >
                                     <Plus className="h-4 w-4 mr-2" />
                                     <span className="hidden sm:inline">Add Inventory</span>
-                                    <span className="sm:hidden">Add</span>
+                                    <span className="sm:hidden">Add Inventory</span>
                                 </Button>
                                 <Button 
                                     variant="secondary" 
-                                    size="sm"
+                                    className="bg-white text-blue-600 hover:bg-gray-100 text-sm md:text-base"
                                     onClick={() => setIsExportModalOpen(true)}
                                 >
                                     <Download className="h-4 w-4 mr-2" />
@@ -497,16 +720,26 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                     <div className="bg-white rounded-lg shadow">
                         {/* Inventory Section */}
                         <div className="p-4 md:p-6">
-                            <h3 className="text-base md:text-lg font-semibold mb-4">Inventory</h3>
+                            <h3 className="text-base md:text-lg font-semibold mb-4 text-gray-900">Inventory</h3>
                             
                             {/* Tabs */}
-                            <div className="mb-6">
-                                <div className="flex space-x-4 md:space-x-8 mb-6">
-                                    <button className="text-blue-600 border-b-2 border-blue-600 pb-2 font-medium text-sm">
+                            <Tabs defaultValue="inventory" className="mb-6">
+                                <TabsList className="grid w-fit grid-cols-2 bg-gray-200 p-1 rounded-xl h-12">
+                                    <TabsTrigger 
+                                        value="inventory" 
+                                        className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                    >
                                         Inventory
-                                    </button>
-                                </div>
+                                    </TabsTrigger>
+                                    <TabsTrigger 
+                                        value="archives" 
+                                        className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                    >
+                                        Archives
+                                    </TabsTrigger>
+                                </TabsList>
                                 
+                                <TabsContent value="inventory" className="mt-6">
                                 {/* Search */}
                                 <div className="flex justify-between items-center mb-4 gap-4">
                                     <div className="flex-1 md:flex-none">
@@ -515,24 +748,27 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                             <Input
                                                 type="search"
                                                 placeholder="Search inventory..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
                                                 className="pl-10 text-sm"
                                             />
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Inventory Table */}
-                                <div className="overflow-x-auto">
+                                {/* Inventory Display - Responsive Design */}
+                                {/* Desktop Table View */}
+                                <div className="hidden md:block overflow-x-auto">
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
                                                 <TableHead className="font-semibold text-xs md:text-sm">Status</TableHead>
-                                                <TableHead className="font-semibold text-xs md:text-sm">ID</TableHead>
+                                                <TableHead className="font-semibold text-xs md:text-sm">Inventory ID</TableHead>
                                                 <TableHead className="font-semibold text-xs md:text-sm">Product</TableHead>
                                                 <TableHead className="font-semibold text-xs md:text-sm">Size</TableHead>
-                                                <TableHead className="hidden sm:table-cell font-semibold text-xs md:text-sm">Price</TableHead>
+                                                <TableHead className="font-semibold text-xs md:text-sm">Price</TableHead>
                                                 <TableHead className="font-semibold text-xs md:text-sm">Stock</TableHead>
-                                                <TableHead className="hidden lg:table-cell font-semibold text-xs md:text-sm">Date</TableHead>
+                                                <TableHead className="font-semibold text-xs md:text-sm">Date</TableHead>
                                                 <TableHead className="font-semibold text-xs md:text-sm">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -550,7 +786,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="font-medium">
-                                                        {String(item.inventory_id).padStart(3, '0')}
+                                                        {item.inventory_id}
                                                     </TableCell>
                                                     <TableCell>{item.product_name}</TableCell>
                                                     <TableCell className="capitalize">{item.size}</TableCell>
@@ -558,13 +794,31 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                                     <TableCell className="font-medium">{item.quantity}</TableCell>
                                                     <TableCell>09/12/25</TableCell>
                                                     <TableCell>
-                                                        <Button
-                                                            onClick={() => handleUpdateStock(item)}
-                                                            size="sm"
-                                                            className="bg-blue-600 hover:bg-blue-700 text-white"
-                                                        >
-                                                            Update Stocks
-                                                        </Button>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="sm"
+                                                                    className="h-8 w-8 p-0"
+                                                                >
+                                                                    <MoreHorizontal className="h-4 w-4" />
+                                                                    <span className="sr-only">Actions</span>
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" className="w-48">
+                                                                <DropdownMenuItem onClick={() => handleUpdateStock(item)}>
+                                                                    <Edit className="mr-2 h-4 w-4" />
+                                                                    Update Stock
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => openArchiveDialog(item)}
+                                                                    className="text-red-600"
+                                                                >
+                                                                    <Archive className="mr-2 h-4 w-4" />
+                                                                    Archive Item
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
                                                     </TableCell>
                                                 </TableRow>
                                             ))
@@ -578,31 +832,239 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                         </TableBody>
                                     </Table>
                                 </div>
-                            </div>
+
+                                {/* Mobile Card View */}
+                                <div className="md:hidden space-y-4">
+                                    {filteredInventory.length > 0 ? (
+                                        filteredInventory.map((item) => (
+                                            <div key={item.inventory_id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <div className="font-medium text-sm text-gray-700">Inventory ID #{item.inventory_id}</div>
+                                                        <div className="font-semibold text-lg text-gray-900">{item.product_name}</div>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        {item.status === 'critical' ? (
+                                                            <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Critical</Badge>
+                                                        ) : item.status === 'available' ? (
+                                                            <Badge className="bg-green-100 text-green-800 hover:bg-green-100">In Stock</Badge>
+                                                        ) : (
+                                                            <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">Out of Stock</Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-2 gap-3 text-sm mb-4">
+                                                    <div>
+                                                        <span className="text-gray-700">Size:</span>
+                                                        <div className="font-medium capitalize text-gray-900">{item.size}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-700">Price:</span>
+                                                        <div className="font-medium text-gray-900">₱{item.price}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-700">Stock:</span>
+                                                        <div className="font-medium text-gray-900">{item.quantity}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-700">Date:</span>
+                                                        <div className="font-medium text-gray-900">09/12/25</div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="pt-3 border-t border-gray-200 flex justify-end">
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="sm"
+                                                                className="h-8 w-8 p-0"
+                                                            >
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                                <span className="sr-only">Actions</span>
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-48">
+                                                            <DropdownMenuItem onClick={() => handleUpdateStock(item)}>
+                                                                <Edit className="mr-2 h-4 w-4" />
+                                                                Update Stock
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem 
+                                                                onClick={() => openArchiveDialog(item)}
+                                                                className="text-red-600"
+                                                            >
+                                                                <Archive className="mr-2 h-4 w-4" />
+                                                                Archive Item
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-8 text-gray-500">
+                                            {searchTerm ? `No inventory items found matching "${searchTerm}"` : 'No inventory items available'}
+                                        </div>
+                                    )}
+                                </div>
+                                </TabsContent>
+                                
+                                <TabsContent value="archives" className="mt-6">
+                                    {archivedInventory.length === 0 ? (
+                                        <div className="text-center py-8 text-gray-500">
+                                            No archived inventory items found.
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* Desktop Archives Table */}
+                                            <div className="hidden md:block overflow-x-auto">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead className="font-semibold text-xs md:text-sm">ID</TableHead>
+                                                            <TableHead className="font-semibold text-xs md:text-sm">Product</TableHead>
+                                                            <TableHead className="font-semibold text-xs md:text-sm">Size</TableHead>
+                                                            <TableHead className="font-semibold text-xs md:text-sm">Price</TableHead>
+                                                            <TableHead className="font-semibold text-xs md:text-sm">Stock</TableHead>
+                                                            <TableHead className="font-semibold text-xs md:text-sm">Archived At</TableHead>
+                                                            <TableHead className="font-semibold text-xs md:text-sm">Actions</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {archivedInventory.map((item) => (
+                                                            <TableRow key={item.inventory_id} className="hover:bg-gray-50 bg-gray-50">
+                                                                <TableCell className="font-medium">
+                                                                    {item.inventory_id}
+                                                                </TableCell>
+                                                                <TableCell className="text-gray-700">{item.product_name}</TableCell>
+                                                                <TableCell className="capitalize text-gray-700">{item.size}</TableCell>
+                                                                <TableCell className="text-gray-700">₱{item.price}</TableCell>
+                                                                <TableCell className="font-medium text-gray-700">{item.quantity}</TableCell>
+                                                                <TableCell className="text-gray-700">
+                                                                    {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : 'N/A'}
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <DropdownMenu>
+                                                                        <DropdownMenuTrigger asChild>
+                                                                            <Button 
+                                                                                variant="ghost" 
+                                                                                size="sm"
+                                                                                className="h-8 w-8 p-0"
+                                                                            >
+                                                                                <MoreHorizontal className="h-4 w-4" />
+                                                                                <span className="sr-only">Actions</span>
+                                                                            </Button>
+                                                                        </DropdownMenuTrigger>
+                                                                        <DropdownMenuContent align="end" className="w-48">
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => openConfirmDialog('restore', item)}
+                                                                                className="text-green-600"
+                                                                            >
+                                                                                <RotateCcw className="mr-2 h-4 w-4" />
+                                                                                Restore Item
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => openConfirmDialog('delete', item)}
+                                                                                className="text-red-600"
+                                                                            >
+                                                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                                                Delete Permanently
+                                                                            </DropdownMenuItem>
+                                                                        </DropdownMenuContent>
+                                                                    </DropdownMenu>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                            
+                                            {/* Mobile Archive Cards */}
+                                            <div className="md:hidden space-y-4">
+                                                {archivedInventory.map((item) => (
+                                                    <div key={item.inventory_id} className="bg-gray-100 rounded-lg p-4 space-y-3">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <div className="font-medium text-sm text-gray-600">ID #{item.inventory_id}</div>
+                                                                <div className="font-semibold text-lg text-gray-800">{item.product_name}</div>
+                                                            </div>
+                                                            <div className="flex items-center space-x-2">
+                                                                <Badge variant="secondary" className="bg-gray-200 text-gray-700">Archived</Badge>
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button 
+                                                                            variant="ghost" 
+                                                                            size="sm"
+                                                                            className="h-8 w-8 p-0"
+                                                                        >
+                                                                            <MoreHorizontal className="h-4 w-4" />
+                                                                            <span className="sr-only">Actions</span>
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="w-48">
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => openConfirmDialog('restore', item)}
+                                                                            className="text-green-600"
+                                                                        >
+                                                                            <RotateCcw className="mr-2 h-4 w-4" />
+                                                                            Restore Item
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => openConfirmDialog('delete', item)}
+                                                                            className="text-red-600"
+                                                                        >
+                                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                                            Delete Permanently
+                                                                        </DropdownMenuItem>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                                            <div>
+                                                                <span className="text-gray-600">Size:</span>
+                                                                <div className="font-medium capitalize text-gray-800">{item.size}</div>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-600">Price:</span>
+                                                                <div className="font-medium text-gray-800">₱{item.price}</div>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-600">Stock:</span>
+                                                                <div className="font-medium text-gray-800">{item.quantity}</div>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-600">Archived:</span>
+                                                                <div className="font-medium text-gray-800">
+                                                                    {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : 'N/A'}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </TabsContent>
+                            </Tabs>
                         </div>
                     </div>
                 </main>
             </div>
 
             {/* Add New Inventory Modal */}
-            {showAddInventoryModal && (
-                <div className="fixed inset-0 flex items-center justify-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg">
-                        <div className="flex justify-between items-center mb-4">
-                            <div>
-                                <h3 className="text-lg font-semibold">Add New Inventory</h3>
-                                <p className="text-sm text-gray-600">Record New Product</p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setShowAddInventoryModal(false);
-                                    setSizeError('');
-                                }}
-                                className="text-gray-400 hover:text-gray-600"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
+            <Dialog open={showAddInventoryModal} onOpenChange={(open) => {
+                setShowAddInventoryModal(open);
+                if (!open) {
+                    setSizeError('');
+                }
+            }}>
+                <DialogContent className="w-full max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl text-gray-900 font-medium">Add New Inventory</DialogTitle>
+                    </DialogHeader>
 
                         <form onSubmit={handleAddSubmit} className="space-y-4">
                             <div>
@@ -622,49 +1084,38 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <Label htmlFor="size">Size</Label>
-                                    <div className="relative">
-                                        <Input
-                                            id="size"
-                                            type="text"
-                                            placeholder="Enter size or select from existing"
-                                            value={addData.size}
-                                            onChange={(e) => {
-                                                setAddData('size', e.target.value);
-                                                setSizeError(''); // Clear error when size changes
-                                            }}
-                                            list="size-options"
-                                            className="mb-2"
-                                        />
-                                        <datalist id="size-options">
-                                            {['small', 'medium', 'large'].map((size) => (
-                                                <option key={size} value={size} />
-                                            ))}
-                                            {getExistingSizes().filter(size => 
-                                                !['small', 'medium', 'large'].includes(size.toLowerCase())
-                                            ).map((size) => (
-                                                <option key={size} value={size} />
-                                            ))}
-                                        </datalist>
-                                    </div>
-                                    <div className="text-xs text-gray-500 mb-2">
-                                        Common sizes: 
-                                        {['small', 'medium', 'large'].map((size, index) => (
-                                            <span key={size}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setAddData('size', size);
-                                                        setSizeError('');
-                                                    }}
-                                                    className="text-blue-600 hover:text-blue-800 hover:underline ml-1"
-                                                >
-                                                    {size}
-                                                </button>
-                                                {index < 2 && ', '}
-                                            </span>
+                                    <label htmlFor="size" className="block text-sm font-medium text-gray-700 mb-2">Size</label>
+                                    <input
+                                        id="size"
+                                        type="text"
+                                        list="sizeOptions"
+                                        value={addData.size}
+                                        onChange={(e) => {
+                                            setAddData('size', e.target.value);
+                                            setSizeError(''); // Clear error when size changes
+                                        }}
+                                        placeholder="Enter size or select from existing"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        style={{ 
+                                            color: addData.size ? '#111827' : '#9CA3AF', 
+                                            backgroundColor: 'white',
+                                            fontSize: '0.875rem'
+                                        }}
+                                        required
+                                    />
+                                    <datalist id="sizeOptions">
+                                        <option value="small" style={{ color: '#111827', backgroundColor: 'white' }}>small</option>
+                                        <option value="medium" style={{ color: '#111827', backgroundColor: 'white' }}>medium</option>
+                                        <option value="large" style={{ color: '#111827', backgroundColor: 'white' }}>large</option>
+                                        <option value="Extra Large" style={{ color: '#111827', backgroundColor: 'white' }}>Extra Large</option>
+                                        {getExistingSizes().filter(size => 
+                                            !['small', 'medium', 'large', 'Extra Large'].includes(size)
+                                        ).map((size) => (
+                                            <option key={size} value={size} style={{ color: '#111827', backgroundColor: 'white' }}>
+                                                {size}
+                                            </option>
                                         ))}
-                                    </div>
+                                    </datalist>
                                     {sizeError && (
                                         <p className="text-sm text-red-600 mt-1">{sizeError}</p>
                                     )}
@@ -720,7 +1171,7 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                 </Button>
                                 <Button
                                     type="submit"
-                                    disabled={addProcessing || !addData.size || getSizeStatus(addData.size).exists}
+                                    disabled={addProcessing || !addData.size || !addData.product_name || getProductSizeCombinationStatus(addData.product_name, addData.size).exists}
                                     className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {addProcessing ? 'Adding...' : (
@@ -732,27 +1183,19 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                 </Button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
+                </DialogContent>
+            </Dialog>
 
             {/* Update Stock Modal */}
-            {showUpdateStockModal && selectedItem && (
-                <div className="fixed inset-0 flex items-center justify-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-semibold">
-                                {selectedItem.product_name} - {selectedItem.size}
-                            </h3>
-                            <button
-                                onClick={() => setShowUpdateStockModal(false)}
-                                className="text-gray-400 hover:text-gray-600"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                        
-                        <p className="text-sm text-gray-600 mb-4">Update Stocks</p>
+            <Dialog open={showUpdateStockModal && !!selectedItem} onOpenChange={(open) => {
+                setShowUpdateStockModal(open);
+            }}>
+                <DialogContent className="w-full max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl text-gray-900 font-medium">
+                            {selectedItem?.product_name} - {selectedItem?.size}
+                        </DialogTitle>
+                    </DialogHeader>
                         
                         <form onSubmit={handleUpdateSubmit} className="space-y-4">
                             <div>
@@ -768,17 +1211,17 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                             
                             {updateData.quantity && (
                                 <div>
-                                    <Label htmlFor="operation">Operation</Label>
+                                    <Label htmlFor="operation" style={{ fontSize: '0.875rem', fontWeight: '500', color: '#374151' }}>Operation</Label>
                                     <Select
                                         value={updateData.operation}
                                         onValueChange={(value) => setUpdateData('operation', value)}
                                     >
-                                        <SelectTrigger>
-                                            <SelectValue />
+                                        <SelectTrigger style={{ backgroundColor: 'white', border: '1px solid #d1d5db', color: '#111827' }}>
+                                            <SelectValue placeholder="Select operation" style={{ color: '#111827', opacity: '1' }} />
                                         </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="Add">Add</SelectItem>
-                                            <SelectItem value="Subtract">Subtract</SelectItem>
+                                        <SelectContent style={{ backgroundColor: 'white', border: '1px solid #d1d5db', zIndex: 9999 }}>
+                                            <SelectItem value="Add" style={{ color: '#111827', backgroundColor: 'white' }}>Add</SelectItem>
+                                            <SelectItem value="Subtract" style={{ color: '#111827', backgroundColor: 'white' }}>Subtract</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -816,27 +1259,28 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                                 )}
                             </div>
                             
-                            <div className="flex space-x-2 pt-4">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => setShowUpdateStockModal(false)}
-                                    className="flex-1"
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    disabled={updateProcessing}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700"
-                                >
-                                    {updateProcessing ? 'Updating...' : 'Update Stock'}
-                                </Button>
+                            <div className="flex flex-col space-y-2 pt-4">
+                                <div className="flex space-x-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setShowUpdateStockModal(false)}
+                                        className="flex-1"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="submit"
+                                        disabled={updateProcessing}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                    >
+                                        {updateProcessing ? 'Updating...' : 'Update Stock'}
+                                    </Button>
+                                </div>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
+                </DialogContent>
+            </Dialog>
 
             {/* Export Modal */}
             <DateFilterModal
@@ -846,6 +1290,102 @@ export default function InventoryWorking({ user, inventory = [] }: InventoryProp
                 title="Inventory Report"
                 description="Select date range to export inventory stock levels and transaction history."
             />
+
+            {/* Confirmation Dialog */}
+            <Dialog open={confirmDialog.open} onOpenChange={(open) => !open && closeConfirmDialog()}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center">
+                            <AlertTriangle className="h-6 w-6 text-amber-500 mr-3" />
+                            {confirmDialog.type === 'restore' && 'Restore Inventory Item'}
+                            {confirmDialog.type === 'delete' && 'Permanently Delete Inventory Item'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {confirmDialog.type === 'restore' && confirmDialog.item && 
+                                `Are you sure you want to restore "${confirmDialog.item.product_name} (${confirmDialog.item.size})"? It will be moved back to the active inventory.`
+                            }
+                            {confirmDialog.type === 'delete' && confirmDialog.item && 
+                                <>
+                                    Are you sure you want to permanently delete "{confirmDialog.item.product_name} ({confirmDialog.item.size})"?
+                                    <br />
+                                    <span className="text-red-600 font-medium">⚠️ Warning: This action cannot be undone!</span>
+                                    <br />
+                                    All inventory data will be permanently removed from the system.
+                                </>
+                            }
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={closeConfirmDialog}
+                            disabled={restoreProcessing || deleteProcessing}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            type="button" 
+                            className={
+                                confirmDialog.type === 'restore' 
+                                    ? "bg-green-600 hover:bg-green-700" 
+                                    : "bg-red-600 hover:bg-red-700"
+                            }
+                            disabled={restoreProcessing || deleteProcessing}
+                            onClick={() => {
+                                if (confirmDialog.type === 'restore' && confirmDialog.item) {
+                                    handleRestoreInventory(confirmDialog.item.inventory_id);
+                                } else if (confirmDialog.type === 'delete' && confirmDialog.item) {
+                                    handleDeleteInventory(confirmDialog.item.inventory_id);
+                                }
+                            }}
+                        >
+                            {(restoreProcessing || deleteProcessing) ? 'Processing...' : (
+                                confirmDialog.type === 'restore' ? 'Restore' : 'Delete Permanently'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Archive Confirmation Dialog */}
+            <Dialog open={archiveDialog.open} onOpenChange={(open) => !open && closeArchiveDialog()}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center">
+                            <AlertTriangle className="h-6 w-6 text-amber-500 mr-3" />
+                            Archive Inventory Item
+                        </DialogTitle>
+                        <DialogDescription>
+                            {archiveDialog.item && 
+                                `Are you sure you want to archive "${archiveDialog.item.product_name} (${archiveDialog.item.size})"? It will be moved to the archives and can be restored later.`
+                            }
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={closeArchiveDialog}
+                            disabled={archiveProcessing}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            type="button" 
+                            className="bg-orange-600 hover:bg-orange-700"
+                            disabled={archiveProcessing}
+                            onClick={() => {
+                                if (archiveDialog.item) {
+                                    handleArchiveInventory(archiveDialog.item.inventory_id);
+                                }
+                            }}
+                        >
+                            {archiveProcessing ? 'Archiving...' : 'Archive'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Logout Confirmation Dialog */}
             <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>

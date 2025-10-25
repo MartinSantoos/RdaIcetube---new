@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Package, ShoppingCart, User, LogOut, Truck, Menu, X } from 'lucide-react';
+import { BarChart3, ShoppingCart, User, LogOut, Truck, Menu, X, Settings, Package } from 'lucide-react';
 import { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -25,6 +25,7 @@ interface Order {
     status: 'pending' | 'out_for_delivery' | 'completed';
     total: number;
     created_at: string;
+    archived?: boolean; // Add archived field for type safety
 }
 
 interface Stats {
@@ -82,7 +83,7 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
             <Head title="Employee Dashboard - RDA Tube Ice" />
             
             {/* Header */}
-            <header className="bg-blue-600 text-white shadow-lg relative z-50">
+            <header className="bg-blue-600 text-white shadow-lg sticky top-0 z-50">
                 <div className="flex items-center justify-between px-4 md:px-6 py-4">
                     <div className="flex items-center space-x-4">
                         <button
@@ -112,33 +113,55 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
             </header>
 
             <div className="flex relative">
-                {/* Mobile Overlay */}
+                {/* Mobile Sidebar Overlay */}
                 {isMobile && sidebarOpen && (
                     <div 
-                        className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+                        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 40 }}
                         onClick={() => setSidebarOpen(false)}
                     />
                 )}
 
-                {/* Desktop Sidebar */}
-                <aside className="w-64 bg-blue-600 min-h-screen text-white hidden md:block">
+                {/* Sidebar */}
+                <aside className={`
+                    ${isMobile 
+                        ? `fixed top-0 left-0 z-50 w-64 h-full bg-blue-600 transform transition-transform duration-300 ease-in-out ${
+                            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                        }` 
+                        : 'fixed top-16 left-0 z-40 w-64 h-[calc(100vh-4rem)] bg-blue-600 overflow-y-auto'
+                    } text-white
+                `}>
                     <div className="p-6">
+                        {isMobile && (
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-lg font-semibold">Menu</h2>
+                                <button
+                                    onClick={() => setSidebarOpen(false)}
+                                    className="p-2 rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        )}
+                        
                         <div className="mb-8">
-                            <h2 className="text-lg font-semibold mb-4">Menu</h2>
+                            {!isMobile && <h2 className="text-lg font-semibold mb-4">Menu</h2>}
                             <nav className="space-y-2">
                                 <Link 
                                     href="/employee/dashboard" 
                                     className="flex items-center space-x-3 bg-blue-700 px-4 py-3 rounded-lg"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <Package className="w-5 h-5" />
+                                    <BarChart3 className="w-5 h-5" />
                                     <span>Dashboard</span>
                                 </Link>
                                 <Link 
                                     href="/employee/orders" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <ShoppingCart className="w-5 h-5" />
-                                    <span>My Orders</span>
+                                    <span>Orders</span>
                                 </Link>
                             </nav>
                         </div>
@@ -149,12 +172,16 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                 <Link 
                                     href="/employee/settings" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <User className="w-5 h-5" />
-                                    <span>Profile</span>
+                                    <Settings className="w-5 h-5" />
+                                    <span>Settings</span>
                                 </Link>
                                 <button 
-                                    onClick={handleLogout}
+                                    onClick={() => {
+                                        if (isMobile) setSidebarOpen(false);
+                                        handleLogout();
+                                    }}
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors w-full text-left"
                                 >
                                     <LogOut className="w-5 h-5" />
@@ -165,84 +192,16 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                     </div>
                 </aside>
 
-                {/* Mobile Sidebar */}
-                {sidebarOpen && (
-                    <aside className="
-                        fixed inset-y-0 left-0 z-50 w-64 
-                        bg-blue-600 text-white
-                        transform translate-x-0 
-                        transition-transform duration-300 ease-in-out
-                        md:hidden
-                    ">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-lg font-semibold">Menu</h2>
-                                <button
-                                    onClick={() => setSidebarOpen(false)}
-                                    className="p-2 rounded-lg hover:bg-blue-700 transition-colors"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-                            
-                            <div className="mb-8">
-                                <nav className="space-y-2">
-                                    <Link 
-                                        href="/employee/dashboard" 
-                                        className="flex items-center space-x-3 bg-blue-700 px-4 py-3 rounded-lg"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <Package className="w-5 h-5" />
-                                        <span>Dashboard</span>
-                                    </Link>
-                                    <Link 
-                                        href="/employee/orders" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <ShoppingCart className="w-5 h-5" />
-                                        <span>Orders</span>
-                                    </Link>
-                                </nav>
-                            </div>
-
-                            <div className="border-t border-blue-500 pt-6">
-                                <h3 className="text-sm font-semibold mb-4">Settings</h3>
-                                <nav className="space-y-2">
-                                    <Link 
-                                        href="/employee/settings" 
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                                        onClick={() => setSidebarOpen(false)}
-                                    >
-                                        <User className="w-5 h-5" />
-                                        <span>Profile</span>
-                                    </Link>
-                                    <button 
-                                        onClick={() => {
-                                            setSidebarOpen(false);
-                                            handleLogout();
-                                        }}
-                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors w-full text-left"
-                                    >
-                                        <LogOut className="w-5 h-5" />
-                                        <span>Log out</span>
-                                    </button>
-                                </nav>
-                            </div>
-                        </div>
-                    </aside>
-                )}
-
                 {/* Main Content */}
-                <main className="flex-1 p-4 md:p-8 w-full min-w-0">
+                <main className={`flex-1 p-4 md:p-8 w-full min-w-0 ${isMobile ? '' : 'ml-64'}`}>
                     {/* Dashboard Header */}
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <h1 className="text-2xl md:text-3xl font-bold mb-2">DASHBOARD</h1>
-                        <p className="text-blue-100 text-sm md:text-base">Welcome Back, {user.name}</p>
+                        <p className="text-blue-100 text-sm md:text-base">Welcome Back, {user.name}!</p>
                     </div>
 
                     {/* Stats Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
                         <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
                             <div className="flex items-center justify-between">
                                 <div>
@@ -275,18 +234,6 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                 </div>
                                 <div className="bg-orange-100 p-2 md:p-3 rounded-lg">
                                     <Truck className="w-6 md:w-8 h-6 md:h-8 text-orange-600" />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-md border-l-4 border-red-500">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-sm md:text-lg font-semibold text-gray-700">Due Today</h3>
-                                    <p className="text-2xl md:text-3xl font-bold text-red-600">{due_today_orders.length}</p>
-                                </div>
-                                <div className="bg-red-100 p-2 md:p-3 rounded-lg">
-                                    <Truck className="w-6 md:w-8 h-6 md:h-8 text-red-600" />
                                 </div>
                             </div>
                         </div>
@@ -349,12 +296,12 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                                     </td>
                                                     <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
                                                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                                            order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
-                                                            order.status === 'out_for_delivery' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
+                                                            order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                                            order.status === 'out_for_delivery' ? 'bg-blue-100 text-blue-800 border-blue-200' :
                                                             'bg-gray-100 text-gray-800'
                                                         }`}>
-                                                            {order.status === 'pending' ? '⏳ Pending' :
-                                                             order.status === 'out_for_delivery' ? '🚚 On Delivery' : 
+                                                            {order.status === 'pending' ? 'Pending' :
+                                                             order.status === 'out_for_delivery' ? 'On Delivery' : 
                                                              order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                                                         </span>
                                                     </td>
@@ -402,8 +349,8 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                                     <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm text-gray-600">{order.order_id}</td>
                                                     <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
                                                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                                            order.status === 'pending' ? 'bg-blue-100 text-blue-800' :
-                                                            order.status === 'out_for_delivery' ? 'bg-orange-100 text-orange-800' :
+                                                            order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                            order.status === 'out_for_delivery' ? 'bg-blue-100 text-blue-800' :
                                                             order.status === 'completed' ? 'bg-green-100 text-green-800' :
                                                             'bg-gray-100 text-gray-800'
                                                         }`}>

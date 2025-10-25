@@ -23,17 +23,39 @@ ChartJS.register(
 interface SalesChartProps {
     hourlySales: number[];
     totalSales: number;
+    period?: 'today' | 'week' | 'month' | 'year';
 }
 
-const SalesChart: React.FC<SalesChartProps> = ({ hourlySales, totalSales }) => {
+const SalesChart: React.FC<SalesChartProps> = ({ hourlySales, totalSales, period = 'today' }) => {
     const chartRef = useRef<ChartJS<'bar', number[], string>>(null);
 
-    // Create hour labels (12 AM, 1 AM, 2 AM, etc.)
-    const labels = Array.from({ length: 24 }, (_, i) => {
-        const hour = i === 0 ? 12 : i > 12 ? i - 12 : i;
-        const period = i < 12 ? 'AM' : 'PM';
-        return `${hour} ${period}`;
-    });
+    // Create appropriate labels based on period
+    const getLabels = () => {
+        switch (period) {
+            case 'today':
+                // Hourly labels (12 AM, 1 AM, 2 AM, etc.)
+                return Array.from({ length: 24 }, (_, i) => {
+                    const hour = i === 0 ? 12 : i > 12 ? i - 12 : i;
+                    const period = i < 12 ? 'AM' : 'PM';
+                    return `${hour} ${period}`;
+                });
+            case 'week':
+                // Daily labels (Mon, Tue, Wed, etc.)
+                return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            case 'month':
+                // Daily labels (1, 2, 3, etc.)
+                const daysInMonth = new Date().getDate(); // Current day of month for now
+                const actualDaysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+                return Array.from({ length: actualDaysInMonth }, (_, i) => `${i + 1}`);
+            case 'year':
+                // Monthly labels (Jan, Feb, Mar, etc.)
+                return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            default:
+                return [];
+        }
+    };
+
+    const labels = getLabels();
 
     const data = {
         labels,
@@ -113,26 +135,12 @@ const SalesChart: React.FC<SalesChartProps> = ({ hourlySales, totalSales }) => {
     };
 
     return (
-        <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                <div className="flex-1">
-                    <h3 className="text-base md:text-lg font-semibold text-gray-700">Today's Sales</h3>
-                    <p className="text-xs md:text-sm text-gray-500">Daily Revenue Overview</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                    <div className="bg-green-100 p-2 md:p-3 rounded-lg">
-                        <svg className="w-6 md:w-8 h-6 md:h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                        </svg>
-                    </div>
-                </div>
-            </div>
-            
+        <>
             <div className="mb-4">
                 <div className="text-2xl md:text-3xl font-bold text-gray-900">
                     ₱{totalSales.toLocaleString()}
                 </div>
-                <p className="text-xs md:text-sm text-gray-500">total revenue today</p>
+                <p className="text-xs md:text-sm text-gray-500">total revenue</p>
             </div>
 
             {totalSales > 0 ? (
@@ -142,14 +150,11 @@ const SalesChart: React.FC<SalesChartProps> = ({ hourlySales, totalSales }) => {
             ) : (
                 <div className="h-64 md:h-80 flex items-center justify-center text-gray-500 bg-gray-50 rounded-lg">
                     <div className="text-center">
-                        <svg className="w-12 h-12 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 00-2-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
                         <p className="text-sm">No sales data available</p>
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 };
 

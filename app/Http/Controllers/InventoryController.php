@@ -29,16 +29,20 @@ class InventoryController extends Controller
                 \Log::info('User details: ' . json_encode($user->toArray()));
             }
             
-            // Try to get inventory items with error handling
-            $inventory = Inventory::orderBy('inventory_id', 'desc')->get();
-            \Log::info('Inventory items count: ' . $inventory->count());
-            \Log::info('Inventory items: ' . $inventory->toJson());
+            // Get active inventory items (not archived)
+            $inventory = Inventory::whereNull('archived_at')->orderBy('inventory_id', 'desc')->get();
+            \Log::info('Active inventory items count: ' . $inventory->count());
+            
+            // Get archived inventory items
+            $archivedInventory = Inventory::whereNotNull('archived_at')->orderBy('archived_at', 'desc')->get();
+            \Log::info('Archived inventory items count: ' . $archivedInventory->count());
             
             \Log::info('About to render inventory-working component');
             
             $response = Inertia::render('admin/inventory-new', [
                 'user' => $user,
-                'inventory' => $inventory
+                'inventory' => $inventory,
+                'archivedInventory' => $archivedInventory
             ]);
             
             \Log::info('Inertia response created successfully');
@@ -52,7 +56,8 @@ class InventoryController extends Controller
             // Return with empty inventory if there's an error
             return Inertia::render('admin/inventory-test', [
                 'user' => auth()->user(),
-                'inventory' => []
+                'inventory' => [],
+                'archivedInventory' => []
             ]);
         }
     }
@@ -69,12 +74,14 @@ class InventoryController extends Controller
             'quantity' => 'required|integer|min:0'
         ]);
 
-        // Check if an inventory item with the same size already exists
-        $existingItem = Inventory::where('size', $request->size)->first();
+        // Check if an inventory item with the same product name and size combination already exists
+        $existingItem = Inventory::where('product_name', $request->product_name)
+                                ->where('size', $request->size)
+                                ->first();
         
         if ($existingItem) {
             return redirect()->back()->withErrors([
-                'size' => 'A product with this size already exists in the inventory. Size: ' . $request->size
+                'size' => 'A product with the name "' . $request->product_name . '" and size "' . $request->size . '" already exists in the inventory. Please choose a different product name or size combination.'
             ])->withInput();
         }
 
@@ -279,5 +286,110 @@ class InventoryController extends Controller
         ]);
 
         return $pdf->download($filename);
+    }
+
+    /**
+     * Archive an inventory item
+     */
+    public function archive($inventory_id)
+    {
+        try {
+            $inventory = Inventory::where('inventory_id', $inventory_id)->firstOrFail();
+            
+            // Update the archived_at timestamp
+            $inventory->update([
+                'archived_at' => now()
+            ]);
+            
+            // Log the archive activity
+            if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+                ActivityLog::log(
+                    'inventory_archived',
+                    "Archived inventory item: {$inventory->product_name} ({$inventory->size})",
+                    $inventory,
+                    [
+                        'product_name' => $inventory->product_name,
+                        'size' => $inventory->size,
+                        'quantity' => $inventory->quantity,
+                        'price' => $inventory->price
+                    ],
+                    auth()->user()->id
+                );
+            }
+            
+            return redirect()->back()->with('success', 'Inventory item archived successfully');
+        } catch (\Exception $e) {
+            Log::error('Error archiving inventory: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to archive inventory item');
+        }
+    }
+
+    /**
+     * Restore an archived inventory item
+     */
+    public function restore($inventory_id)
+    {
+        try {
+            $inventory = Inventory::where('inventory_id', $inventory_id)->firstOrFail();
+            
+            // Remove the archived_at timestamp
+            $inventory->update([
+                'archived_at' => null
+            ]);
+            
+            // Log the restore activity
+            if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+                ActivityLog::log(
+                    'inventory_restored',
+                    "Restored inventory item: {$inventory->product_name} ({$inventory->size})",
+                    $inventory,
+                    [
+                        'product_name' => $inventory->product_name,
+                        'size' => $inventory->size,
+                        'quantity' => $inventory->quantity,
+                        'price' => $inventory->price
+                    ],
+                    auth()->user()->id
+                );
+            }
+            
+            return redirect()->back()->with('success', 'Inventory item restored successfully');
+        } catch (\Exception $e) {
+            Log::error('Error restoring inventory: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to restore inventory item');
+        }
+    }
+
+    /**
+     * Delete an inventory item
+     */
+    public function destroy($inventory_id)
+    {
+        try {
+            $inventory = Inventory::where('inventory_id', $inventory_id)->firstOrFail();
+            
+            // Log the deletion activity before deletion
+            if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+                ActivityLog::log(
+                    'inventory_deleted',
+                    "Deleted inventory item: {$inventory->product_name} ({$inventory->size})",
+                    $inventory,
+                    [
+                        'product_name' => $inventory->product_name,
+                        'size' => $inventory->size,
+                        'quantity' => $inventory->quantity,
+                        'price' => $inventory->price
+                    ],
+                    auth()->user()->id
+                );
+            }
+            
+            $inventory->delete();
+            
+            return redirect()->back()->with('success', 'Inventory item deleted successfully');
+        } catch (\Exception $e) {
+            Log::error('Error deleting inventory: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to delete inventory item');
+        }
     }
 }

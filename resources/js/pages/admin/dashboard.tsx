@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { BarChart3, Package, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X, Clock, User } from 'lucide-react';
+import { BarChart3, Package, Cog, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X, Clock, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -28,7 +28,7 @@ interface AdminDashboardProps {
         }>;
     };
     salesStats?: {
-        todayTotal: number;
+        totalSales: number;
         hourlySales: number[];
     };
     recentActivities?: Array<{
@@ -76,12 +76,19 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
     const [filteredActivities, setFilteredActivities] = useState(recentActivities || []);
     const [loadingActivities, setLoadingActivities] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+    const [selectedSalesPeriod, setSelectedSalesPeriod] = useState<'today' | 'week' | 'month' | 'year'>('today');
+    const [salesData, setSalesData] = useState(salesStats);
+    const [loadingSales, setLoadingSales] = useState(false);
     const isMobile = useIsMobile();
     
 
     
     useEffect(() => {
         fetchEquipmentData();
+        // Only fetch sales data if it wasn't provided from the server
+        if (!salesStats) {
+            fetchSalesData('today');
+        }
     }, []);
     
     const fetchEquipmentData = async () => {
@@ -94,6 +101,25 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
         } finally {
             setLoading(false);
         }
+    };
+    
+    const fetchSalesData = async (period: 'today' | 'week' | 'month' | 'year') => {
+        setLoadingSales(true);
+        try {
+            const response = await fetch(`/api/admin/sales/dashboard-stats?period=${period}`);
+            const data = await response.json();
+            setSalesData(data.salesStats);
+        } catch (error) {
+            console.error('Error fetching sales data:', error);
+            setSalesData(undefined);
+        } finally {
+            setLoadingSales(false);
+        }
+    };
+    
+    const handleSalesPeriodChange = (period: 'today' | 'week' | 'month' | 'year') => {
+        setSelectedSalesPeriod(period);
+        fetchSalesData(period);
     };
     
     const getCurrentEquipmentCount = () => {
@@ -179,7 +205,7 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
             <Head title="Admin Dashboard - RDA Tube Ice" />
             
             {/* Header */}
-            <header className="bg-blue-600 text-white shadow-lg relative z-50">
+            <header className="bg-blue-600 text-white shadow-lg sticky top-0 z-50">
                 <div className="flex items-center justify-between px-4 md:px-6 py-4">
                     <div className="flex items-center space-x-4">
                         {isMobile && (
@@ -214,11 +240,12 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                 </div>
             </header>
 
-            <div className="flex relative">
-                {/* Mobile Overlay */}
+            <div className="flex relative" style={{ display: 'flex', position: 'relative' }}>
+                {/* Mobile Sidebar Overlay */}
                 {isMobile && sidebarOpen && (
                     <div 
-                        className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+                        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 40 }}
                         onClick={() => setSidebarOpen(false)}
                     />
                 )}
@@ -229,7 +256,7 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                         ? `fixed top-0 left-0 z-50 w-64 h-full bg-blue-600 transform transition-transform duration-300 ease-in-out ${
                             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
                         }` 
-                        : 'w-64 bg-blue-600 min-h-screen'
+                        : 'fixed top-16 left-0 z-40 w-64 h-[calc(100vh-4rem)] bg-blue-600 overflow-y-auto'
                     } text-white
                 `}>
                     <div className="p-6">
@@ -285,7 +312,7 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <Settings className="w-5 h-5" />
+                                    <Cog className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
                                 <Link 
@@ -326,7 +353,7 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                 </aside>
 
                 {/* Main Content */}
-                <main className="flex-1 p-4 md:p-8 w-full min-w-0">
+                <main className={`flex-1 p-4 md:p-8 w-full min-w-0 ${isMobile ? '' : 'ml-64'}`}>
                     {/* Dashboard Header */}
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <h1 className="text-2xl md:text-3xl font-bold mb-2">DASHBOARD</h1>
@@ -342,18 +369,17 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                     <p className="text-xs md:text-sm text-gray-500">{getPeriodLabel()}</p>
                                 </div>
                                 <div className="flex items-center space-x-2">
-                                    <div className="relative">
                                         <select
                                             value={selectedPeriod}
                                             onChange={(e) => setSelectedPeriod(e.target.value as 'today' | 'thisMonth' | 'thisYear')}
-                                            className="appearance-none bg-gray-100 border border-gray-300 rounded-lg px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                            className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                            style={{ color: '#111827', backgroundColor: 'white' }}
                                         >
                                             <option value="today">Today</option>
                                             <option value="thisMonth">This Month</option>
                                             <option value="thisYear">This Year</option>
                                         </select>
                                         <Filter className="absolute right-1 md:right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
-                                    </div>
                                     <div className="bg-blue-100 p-2 md:p-3 rounded-lg">
                                         <ShoppingCart className="w-6 md:w-8 h-6 md:h-8 text-blue-600" />
                                     </div>
@@ -429,21 +455,19 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                     <p className="text-xs md:text-sm text-gray-500">{getEquipmentViewLabel()}</p>
                                 </div>
                                 <div className="flex items-center space-x-2">
-                                    <div className="relative">
-                                        <select
-                                            value={selectedEquipmentView}
-                                            onChange={(e) => setSelectedEquipmentView(e.target.value as 'total' | 'operational' | 'under_maintenance' | 'broken')}
-                                            className="appearance-none bg-gray-100 border border-gray-300 rounded-lg px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                                        >
-                                            <option value="total">Total</option>
-                                            <option value="operational">Active</option>
-                                            <option value="under_maintenance">Maintenance</option>
-                                            <option value="broken">Broken</option>
-                                        </select>
-                                        <Filter className="absolute right-1 md:right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
-                                    </div>
+                                    <select
+                                        value={selectedEquipmentView}
+                                        onChange={(e) => setSelectedEquipmentView(e.target.value as 'total' | 'operational' | 'under_maintenance' | 'broken')}
+                                        className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                        style={{ color: '#111827', backgroundColor: 'white' }}
+                                    >
+                                        <option value="total">Total</option>
+                                        <option value="operational">Active</option>
+                                        <option value="under_maintenance">Maintenance</option>
+                                        <option value="broken">Broken</option>
+                                    </select>
                                     <div className="bg-orange-100 p-2 md:p-3 rounded-lg">
-                                        <Settings className="w-6 md:w-8 h-6 md:h-8 text-orange-600" />
+                                        <Cog className="w-6 md:w-8 h-6 md:h-8 text-orange-600" />
                                     </div>
                                 </div>
                             </div>
@@ -465,19 +489,62 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                     {/* Sales Chart and Activity History */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
                         {/* Sales Chart */}
-                        <div>
-                            {salesStats ? (
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
+                            {/* Sales Header with Filter */}
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-3">
+                                    <div className="bg-green-100 p-2 rounded-lg">
+                                        <BarChart3 className="h-5 w-5 text-green-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-900">
+                                            {selectedSalesPeriod === 'today' ? "Today's Sales" : 
+                                             selectedSalesPeriod === 'week' ? "This Week's Sales" :
+                                             selectedSalesPeriod === 'month' ? "This Month's Sales" :
+                                             "This Year's Sales"}
+                                        </h3>
+                                        <p className="text-sm text-gray-600">
+                                            {selectedSalesPeriod === 'today' ? "Daily Revenue Overview" :
+                                             selectedSalesPeriod === 'week' ? "Weekly Revenue Overview" :
+                                             selectedSalesPeriod === 'month' ? "Monthly Revenue Overview" :
+                                             "Yearly Revenue Overview"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <select
+                                        value={selectedSalesPeriod}
+                                        onChange={(e) => handleSalesPeriodChange(e.target.value as 'today' | 'week' | 'month' | 'year')}
+                                        className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                        style={{ color: '#111827', backgroundColor: 'white' }}
+                                    >
+                                        <option value="today">Today</option>
+                                        <option value="week">This Week</option>
+                                        <option value="month">This Month</option>
+                                        <option value="year">This Year</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            {/* Chart Content */}
+                            {loadingSales ? (
+                                <div className="flex items-center justify-center h-64 text-gray-500">
+                                    <div className="text-center">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                                        <div className="text-sm">Loading sales data...</div>
+                                    </div>
+                                </div>
+                            ) : salesData ? (
                                 <SalesChart 
-                                    hourlySales={salesStats.hourlySales} 
-                                    totalSales={salesStats.todayTotal} 
+                                    hourlySales={salesData.hourlySales} 
+                                    totalSales={salesData.totalSales} 
+                                    period={selectedSalesPeriod}
                                 />
                             ) : (
-                                <div className="bg-white rounded-lg p-4 md:p-6 shadow-md">
-                                    <div className="flex items-center justify-center h-64 text-gray-500">
-                                        <div className="text-center">
-                                            <div className="text-lg font-medium mb-2">Sales data not available</div>
-                                            <div className="text-sm">Unable to load today's sales information</div>
-                                        </div>
+                                <div className="flex items-center justify-center h-64 text-gray-500">
+                                    <div className="text-center">
+                                        <div className="text-lg font-medium mb-2">No sales data available</div>
+                                        <div className="text-sm">Unable to load sales information</div>
                                     </div>
                                 </div>
                             )}
@@ -546,7 +613,7 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between">
                                                     <p className="text-sm font-medium text-gray-900">
-                                                        {activity.user.name}
+                                                        {activity.user?.name || 'Unknown User'}
                                                     </p>
                                                     <div className="text-xs text-gray-500">
                                                         {activityFilter === 'recent' ? (

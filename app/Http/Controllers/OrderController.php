@@ -265,6 +265,34 @@ class OrderController extends Controller
     }
 
     /**
+     * Permanently delete an order.
+     */
+    public function forceDelete($order_id)
+    {
+        $order = Order::findOrFail($order_id);
+        
+        // Store order info for logging before deletion
+        $customerName = $order->customer_name;
+        $orderId = $order->order_id;
+
+        // Log the activity before deletion
+        if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            ActivityLog::log(
+                'order_permanently_deleted',
+                "Permanently deleted order #{$orderId} for {$customerName}",
+                null, // No object since it will be deleted
+                ['customer_name' => $customerName, 'order_id' => $orderId],
+                auth()->user()->id
+            );
+        }
+
+        // Permanently delete the order
+        $order->forceDelete();
+
+        return redirect()->back()->with('success', 'Order permanently deleted successfully!');
+    }
+
+    /**
      * Show the receipt for an order.
      */
     public function showReceipt($order_id)
@@ -281,9 +309,10 @@ class OrderController extends Controller
     {
         $user = auth()->user();
         
-        // Get orders assigned to this employee (delivery rider)
+        // Get orders assigned to this employee (delivery rider) - exclude archived orders
         $orders = Order::with('deliveryRider')
             ->where('delivery_rider_id', $user->id)
+            ->where('archived', false) // Only show non-archived orders
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -388,9 +417,10 @@ class OrderController extends Controller
 
         $user = auth()->user();
         
-        // Find the order and ensure it's assigned to this employee
+        // Find the order and ensure it's assigned to this employee and not archived
         $order = Order::where('order_id', $order_id)
                      ->where('delivery_rider_id', $user->id)
+                     ->where('archived', false) // Prevent updates to archived orders
                      ->firstOrFail();
         
         $previousStatus = $order->status;
@@ -461,9 +491,10 @@ class OrderController extends Controller
 
         $user = auth()->user();
         
-        // Find the order and ensure it's assigned to this employee
+        // Find the order and ensure it's assigned to this employee and not archived
         $order = Order::where('order_id', $order_id)
                      ->where('delivery_rider_id', $user->id)
+                     ->where('archived', false) // Prevent updates to archived orders
                      ->where('status', 'out_for_delivery') // Only allow completion from out_for_delivery
                      ->firstOrFail();
         
