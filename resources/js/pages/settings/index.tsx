@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { BarChart3, Package, Settings, ShoppingCart, Users, LogOut, User, Lock, Phone, MapPin, UserCircle, Menu, X, Monitor } from 'lucide-react';
+import { BarChart3, Package, Settings,Cog, ShoppingCart, Users, LogOut, User, Lock, Phone, MapPin, UserCircle, Menu, X, Monitor } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -89,7 +89,7 @@ export default function SettingsPage({ user }: SettingsProps) {
                 { href: '/admin/point-of-sales', icon: ShoppingCart, label: 'Order' },
                 { href: '/admin/inventory', icon: Package, label: 'Inventory' },
                 { href: '/admin/employees', icon: Users, label: 'Employees' },
-                { href: '/admin/equipment', icon: Settings, label: 'Equipment' },
+                { href: '/admin/equipment', icon: Cog, label: 'Equipment' },
                 { href: '/admin/sales-report', icon: BarChart3, label: 'Sales Report' },
             ];
         } else {
@@ -101,7 +101,7 @@ export default function SettingsPage({ user }: SettingsProps) {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 overflow-hidden">
+        <div className="min-h-screen bg-gray-50">
             <Head title="Settings - RDA Tube Ice" />
             
             {/* Header */}
@@ -207,7 +207,7 @@ export default function SettingsPage({ user }: SettingsProps) {
                 </aside>
 
                 {/* Main Content */}
-                <main className={`flex-1 p-4 md:p-6 ${isMobile ? 'w-full pt-20' : 'ml-64 pt-20'} h-[calc(100vh-5rem)] overflow-hidden transition-all duration-300`}>
+                <main className={`flex-1 p-4 md:p-6 ${isMobile ? 'w-full pt-20' : 'ml-64 pt-20'} min-h-screen transition-all duration-300`}>
                     {/* Page Header */}
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <div>
@@ -217,10 +217,10 @@ export default function SettingsPage({ user }: SettingsProps) {
                     </div>
 
                     {/* Settings Content */}
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6 h-[calc(100%-120px)] overflow-hidden">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
                         {/* Profile Sidebar */}
                         <div className="lg:col-span-1">
-                            <div className="bg-white rounded-xl p-6 shadow-sm h-full overflow-y-auto">
+                            <div className="bg-white rounded-xl p-6 shadow-sm">`
                                 <div className="text-center">
                                     <div className="bg-gray-200 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4">
                                         <span className="text-3xl font-bold text-gray-600">
@@ -265,8 +265,8 @@ export default function SettingsPage({ user }: SettingsProps) {
                                 </TabsList>
 
                                 {/* Account Tab */}
-                                <TabsContent value="account" className="mt-6 flex-1 overflow-hidden">
-                                    <div className="bg-white rounded-xl p-6 shadow-sm h-full overflow-y-auto">
+                                <TabsContent value="account" className="mt-6">
+                                    <div className="bg-white rounded-xl p-6 shadow-sm">
                                         <p className="text-2xl font-bold text-gray-800 mb-6">Change your Password</p>
 
                                         {passwordSuccess && (

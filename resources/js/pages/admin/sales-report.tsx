@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
-import { BarChart3, Package, Cog, Settings, ShoppingCart, Users, LogOut, Search, Download, Menu, X } from 'lucide-react';
+import { BarChart3, Package, Settings, ShoppingCart, Users, LogOut, Search, Download, Menu, X, Calendar, TrendingUp, Eye, FileText, FileSpreadsheet } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import DateFilterModal from '@/components/DateFilterModal';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -59,6 +60,16 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+    
+    // Enhanced export options
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+    const [includeSeasonalAnalytics, setIncludeSeasonalAnalytics] = useState(true);
+    const [includeTrends, setIncludeTrends] = useState(true);
+    const [exportFormat, setExportFormat] = useState<'pdf' | 'excel'>('pdf');
+    const [showPreview, setShowPreview] = useState(false);
+    
     const isMobile = useIsMobile();
     
     const handleLogout = () => {
@@ -73,15 +84,92 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
         setIsLogoutModalOpen(false);
     };
 
-    const handleExport = (startDate: string, endDate: string, format: 'pdf' | 'csv') => {
+    const handleExport = () => {
+        if (!startDate || !endDate) {
+            alert('Please select both start and end dates');
+            return;
+        }
+        
         const params = new URLSearchParams({
             start_date: startDate,
             end_date: endDate,
-            format: format
+            format: exportFormat,
+            sizes: selectedSizes.join(','),
+            seasonal_analytics: includeSeasonalAnalytics.toString(),
+            trends: includeTrends.toString()
         });
         
         // Open export URL in new tab
         window.open(`/admin/sales-report/export?${params.toString()}`, '_blank');
+        setIsExportModalOpen(false);
+    };
+
+    // Get available sizes from orders
+    const availableSizes = useMemo(() => {
+        const sizes = [...new Set(orders.map(order => order.size))].filter(Boolean);
+        return sizes.sort();
+    }, [orders]);
+
+    // Handle size selection toggle
+    const handleSizeToggle = (size: string) => {
+        setSelectedSizes(prev => 
+            prev.includes(size) 
+                ? prev.filter(s => s !== size)
+                : [...prev, size]
+        );
+    };
+
+    // Get filtered orders for preview
+    const getFilteredOrders = () => {
+        if (!startDate || !endDate) return [];
+        
+        return orders.filter(order => {
+            const orderDate = order.order_date.split('T')[0];
+            const sizeMatch = selectedSizes.length === 0 || selectedSizes.includes(order.size);
+            const dateMatch = orderDate >= startDate && orderDate <= endDate;
+            return dateMatch && sizeMatch && order.status === 'completed';
+        });
+    };
+
+    // Calculate preview analytics
+    const getPreviewAnalytics = () => {
+        const filteredOrders = getFilteredOrders();
+        
+        const analytics = {
+            totalOrders: filteredOrders.length,
+            totalRevenue: filteredOrders.reduce((sum, order) => {
+                const orderTotal = parseFloat(order.total?.toString() || '0');
+                return sum + (isNaN(orderTotal) ? 0 : orderTotal);
+            }, 0),
+            sizeBreakdown: {} as Record<string, { orders: number; revenue: number }>,
+            monthlyData: {} as Record<string, { orders: number; revenue: number }>
+        };
+
+        // Size breakdown
+        filteredOrders.forEach(order => {
+            const size = order.size || 'Unknown';
+            if (!analytics.sizeBreakdown[size]) {
+                analytics.sizeBreakdown[size] = { orders: 0, revenue: 0 };
+            }
+            analytics.sizeBreakdown[size].orders++;
+            const orderTotal = parseFloat(order.total?.toString() || '0');
+            analytics.sizeBreakdown[size].revenue += isNaN(orderTotal) ? 0 : orderTotal;
+        });
+
+        // Monthly breakdown for seasonal analytics
+        if (includeSeasonalAnalytics) {
+            filteredOrders.forEach(order => {
+                const month = new Date(order.order_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+                if (!analytics.monthlyData[month]) {
+                    analytics.monthlyData[month] = { orders: 0, revenue: 0 };
+                }
+                analytics.monthlyData[month].orders++;
+                const orderTotal = parseFloat(order.total?.toString() || '0');
+                analytics.monthlyData[month].revenue += isNaN(orderTotal) ? 0 : orderTotal;
+            });
+        }
+
+        return analytics;
     };
 
     // Calculate sales metrics
@@ -295,7 +383,7 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <Cog className="w-5 h-5" />
+                                    <Settings className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
                                 <Link 
@@ -456,14 +544,242 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                 </main>
             </div>
 
-            {/* Export Modal */}
-            <DateFilterModal
-                isOpen={isExportModalOpen}
-                onClose={() => setIsExportModalOpen(false)}
-                onExport={handleExport}
-                title="Sales Report"
-                description="Select date range to export sales data and revenue analytics."
-            />
+            {/* Enhanced Export Modal */}
+            <Dialog open={isExportModalOpen} onOpenChange={(open) => {
+                if (!open) {
+                    setIsExportModalOpen(false);
+                    setStartDate('');
+                    setEndDate('');
+                    setSelectedSizes([]);
+                    setIncludeSeasonalAnalytics(true);
+                    setIncludeTrends(true);
+                    setExportFormat('pdf');
+                    setShowPreview(false);
+                }
+            }}>
+                <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Download className="h-5 w-5 text-blue-600" />
+                            Export Sales Analytics
+                        </DialogTitle>
+                        <DialogDescription>
+                            Configure your sales export with size filtering, seasonal analytics, and trend analysis.
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="space-y-6">
+                        {/* Date Range */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <Label htmlFor="start-date" className="text-sm font-medium">Start Date</Label>
+                                <Input
+                                    id="start-date"
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="mt-1"
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="end-date" className="text-sm font-medium">End Date</Label>
+                                <Input
+                                    id="end-date"
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="mt-1"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Size Selection */}
+                        <div>
+                            <Label className="text-sm font-medium mb-3 block">Product Sizes</Label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {availableSizes.map(size => (
+                                    <label key={size} className="flex items-center space-x-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedSizes.includes(size)}
+                                            onChange={() => handleSizeToggle(size)}
+                                            className="text-blue-600"
+                                        />
+                                        <span className="text-sm font-medium">{size}</span>
+                                    </label>
+                                ))}
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setSelectedSizes(selectedSizes.length === availableSizes.length ? [] : availableSizes)}
+                                    className="text-xs"
+                                >
+                                    {selectedSizes.length === availableSizes.length ? 'Deselect All' : 'Select All'}
+                                </Button>
+                            </div>
+                            {selectedSizes.length === 0 && (
+                                <p className="text-xs text-gray-500 mt-1">No sizes selected - all sizes will be included</p>
+                            )}
+                        </div>
+
+                        {/* Analytics Options */}
+                        <div>
+                            <Label className="text-sm font-medium mb-3 block">Analytics Options</Label>
+                            <div className="space-y-3">
+                                <label className="flex items-center space-x-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                    <input
+                                        type="checkbox"
+                                        checked={includeSeasonalAnalytics}
+                                        onChange={(e) => setIncludeSeasonalAnalytics(e.target.checked)}
+                                        className="text-blue-600"
+                                    />
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="h-4 w-4 text-orange-600" />
+                                            <span className="font-medium text-sm">Seasonal Analytics</span>
+                                        </div>
+                                        <p className="text-xs text-gray-600 mt-1">Monthly patterns and seasonal demand analysis</p>
+                                    </div>
+                                </label>
+
+                                <label className="flex items-center space-x-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                    <input
+                                        type="checkbox"
+                                        checked={includeTrends}
+                                        onChange={(e) => setIncludeTrends(e.target.checked)}
+                                        className="text-blue-600"
+                                    />
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <TrendingUp className="h-4 w-4 text-green-600" />
+                                            <span className="font-medium text-sm">Trend Analysis</span>
+                                        </div>
+                                        <p className="text-xs text-gray-600 mt-1">Growth trends and performance indicators</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Export Format */}
+                        <div>
+                            <Label className="text-sm font-medium mb-3 block">Export Format</Label>
+                            <div className="flex gap-4">
+                                <label className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="format"
+                                        value="pdf"
+                                        checked={exportFormat === 'pdf'}
+                                        onChange={(e) => setExportFormat(e.target.value as 'pdf' | 'excel')}
+                                        className="text-blue-600"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                        <FileText className="h-4 w-4 text-red-600" />
+                                        <span className="text-sm">PDF Report</span>
+                                    </div>
+                                </label>
+                                <label className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="format"
+                                        value="excel"
+                                        checked={exportFormat === 'excel'}
+                                        onChange={(e) => setExportFormat(e.target.value as 'pdf' | 'excel')}
+                                        className="text-blue-600"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                        <FileSpreadsheet className="h-4 w-4 text-green-600" />
+                                        <span className="text-sm">Excel Spreadsheet</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Preview Section */}
+                        {startDate && endDate && (
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <Label className="text-sm font-medium">Export Preview</Label>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowPreview(!showPreview)}
+                                        className="text-xs"
+                                    >
+                                        <Eye className="h-3 w-3 mr-1" />
+                                        {showPreview ? 'Hide Preview' : 'Show Preview'}
+                                    </Button>
+                                </div>
+                                
+                                {showPreview && (() => {
+                                    const analytics = getPreviewAnalytics();
+                                    return (
+                                        <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                                <div>
+                                                    <span className="font-medium">Total Orders:</span>
+                                                    <span className="ml-2">{analytics.totalOrders}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Total Revenue:</span>
+                                                    <span className="ml-2">₱{Number(analytics.totalRevenue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {Object.keys(analytics.sizeBreakdown).length > 0 && (
+                                                <div>
+                                                    <p className="font-medium text-sm mb-2">Size Breakdown:</p>
+                                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                                        {Object.entries(analytics.sizeBreakdown).map(([size, data]) => (
+                                                            <div key={size} className="flex justify-between">
+                                                                <span>{size}:</span>
+                                                                <span>{data.orders} orders, ₱{Number(data.revenue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            {includeSeasonalAnalytics && Object.keys(analytics.monthlyData).length > 0 && (
+                                                <div>
+                                                    <p className="font-medium text-sm mb-2">Monthly Data:</p>
+                                                    <div className="grid grid-cols-1 gap-1 text-xs max-h-24 overflow-y-auto">
+                                                        {Object.entries(analytics.monthlyData).map(([month, data]) => (
+                                                            <div key={month} className="flex justify-between">
+                                                                <span>{month}:</span>
+                                                                <span>{data.orders} orders, ₱{Number(data.revenue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="gap-2 mt-6">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => setIsExportModalOpen(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={handleExport}
+                            disabled={!startDate || !endDate}
+                            className="bg-blue-600 hover:bg-blue-700"
+                        >
+                            <Download className="mr-2 h-4 w-4" />
+                            Export {exportFormat.toUpperCase()}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Logout Confirmation Dialog */}
             <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>

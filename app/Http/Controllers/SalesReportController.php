@@ -31,7 +31,7 @@ class SalesReportController extends Controller
     }
 
     /**
-     * Export sales report data to CSV or PDF
+     * Export sales report data with size filtering and analytics options
      */
     public function export(Request $request)
     {
@@ -49,35 +49,236 @@ class SalesReportController extends Controller
             });
         }
 
-        // Generate PDF report directly
-        return $this->generatePdfReport($orders, $request);
+        // Filter by sizes if provided
+        if ($request->has('sizes') && $request->input('sizes') !== '') {
+            $selectedSizes = explode(',', $request->input('sizes'));
+            $orders = $orders->filter(function ($order) use ($selectedSizes) {
+                return in_array($order->size, $selectedSizes);
+            });
+        }
+
+        // Get analytics options
+        $includeSeasonalAnalytics = $request->boolean('seasonal_analytics');
+        $includeTrends = $request->boolean('trends');
+        $format = $request->input('format', 'pdf');
+
+        if ($format === 'excel') {
+            return $this->generateExcelReport($orders, $request, $includeSeasonalAnalytics, $includeTrends);
+        } else {
+            return $this->generatePdfReport($orders, $request, $includeSeasonalAnalytics, $includeTrends);
+        }
     }
 
 
 
-    private function generatePdfReport($orders, $request)
+    private function generatePdfReport($orders, $request, $includeSeasonalAnalytics = false, $includeTrends = false)
     {
         $startDate = $request->get('start_date');
         $endDate = $request->get('end_date');
+        $selectedSizes = $request->get('sizes') ? explode(',', $request->get('sizes')) : [];
         
-        // Calculate summary statistics (orders are already filtered to completed status)
-        $totalRevenue = $orders->sum('total');
-        $totalOrders = $orders->count();
-        $completedOrdersCount = $orders->count(); // All orders are completed now
+        // Calculate analytics data
+        $analyticsData = $this->calculateAnalyticsData($orders, $includeSeasonalAnalytics, $includeTrends);
         
         // Generate PDF using DomPDF
         $pdf = Pdf::loadView('exports.sales-report-pdf', [
             'orders' => $orders,
-            'totalRevenue' => $totalRevenue,
-            'totalOrders' => $totalOrders,
-            'completedOrders' => $completedOrdersCount,
+            'analyticsData' => $analyticsData,
+            'selectedSizes' => $selectedSizes,
+            'includeSeasonalAnalytics' => $includeSeasonalAnalytics,
+            'includeTrends' => $includeTrends,
             'startDate' => $startDate,
             'endDate' => $endDate,
             'generatedAt' => now()->format('Y-m-d H:i:s'),
+            // Add individual variables for backward compatibility with PDF template
+            'totalRevenue' => $analyticsData['summary']['totalRevenue'],
+            'totalOrders' => $analyticsData['summary']['totalOrders'],
+            'completedOrders' => $analyticsData['summary']['totalOrders'], // All filtered orders are completed
         ]);
 
-        $filename = 'sales-report-' . date('Y-m-d') . '.pdf';
+        $filename = 'sales-analytics-report-' . date('Y-m-d') . '.pdf';
         return $pdf->download($filename);
+    }
+
+    private function generateExcelReport($orders, $request, $includeSeasonalAnalytics = false, $includeTrends = false)
+    {
+        $analyticsData = $this->calculateAnalyticsData($orders, $includeSeasonalAnalytics, $includeTrends);
+        
+        // Create Excel-compatible CSV with multiple sheets simulation
+        $csvData = [];
+        
+        // Header
+        $csvData[] = ['Sales Analytics Report - Generated on ' . now()->format('Y-m-d H:i:s')];
+        $csvData[] = ['Date Range: ' . $request->get('start_date') . ' to ' . $request->get('end_date')];
+        $csvData[] = [];
+        
+        // Summary
+        $csvData[] = ['=== SALES SUMMARY ==='];
+        $csvData[] = ['Total Revenue', 'PHP ' . number_format($analyticsData['summary']['totalRevenue'], 2)];
+        $csvData[] = ['Total Orders', number_format($analyticsData['summary']['totalOrders'])];
+        $csvData[] = ['Average Order Value', 'PHP ' . number_format($analyticsData['summary']['averageOrderValue'], 2)];
+        $csvData[] = [];
+        
+        // Size Analysis
+        $csvData[] = ['=== SIZE ANALYSIS ==='];
+        $csvData[] = ['Size', 'Orders', 'Revenue', 'Percentage'];
+        foreach ($analyticsData['sizeBreakdown'] as $size => $data) {
+            $csvData[] = [$size, number_format($data['orders']), 'PHP ' . number_format($data['revenue'], 2), number_format($data['percentage'], 1) . '%'];
+        }
+        $csvData[] = [];
+        
+        // Seasonal Analytics
+        if ($includeSeasonalAnalytics && !empty($analyticsData['seasonalData'])) {
+            $csvData[] = ['=== SEASONAL ANALYTICS ==='];
+            $csvData[] = ['Month', 'Orders', 'Revenue'];
+            foreach ($analyticsData['seasonalData'] as $month => $data) {
+                $csvData[] = [$month, number_format($data['orders']), 'PHP ' . number_format($data['revenue'], 2)];
+            }
+            $csvData[] = [];
+        }
+        
+        // Trends
+        if ($includeTrends && !empty($analyticsData['trends'])) {
+            $csvData[] = ['=== TREND ANALYSIS ==='];
+            $csvData[] = ['Metric', 'Value'];
+            foreach ($analyticsData['trends'] as $metric => $value) {
+                $csvData[] = [$metric, $value];
+            }
+            $csvData[] = [];
+        }
+        
+        // Orders Data
+        $csvData[] = ['=== DETAILED ORDERS ==='];
+        $csvData[] = ['Order ID', 'Customer', 'Size', 'Quantity', 'Total', 'Order Date'];
+        foreach ($orders as $order) {
+            $csvData[] = [
+                $order->order_id,
+                $order->customer_name,
+                $order->size,
+                $order->quantity,
+                '₱' . number_format($order->total, 2),
+                date('Y-m-d', strtotime($order->order_date))
+            ];
+        }
+        
+        // Return Excel file
+        $filename = 'sales-analytics-data-' . date('Y-m-d') . '.csv';
+        $headers = [
+            'Content-Type' => 'application/vnd.ms-excel',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+        
+        return response()->stream(function() use ($csvData) {
+            $file = fopen('php://output', 'w');
+            foreach ($csvData as $row) {
+                fputcsv($file, $row);
+            }
+            fclose($file);
+        }, 200, $headers);
+    }
+
+    private function calculateAnalyticsData($orders, $includeSeasonalAnalytics = false, $includeTrends = false)
+    {
+        $data = [];
+        
+        // Summary statistics - ensure proper numeric conversion
+        $totalRevenue = $orders->sum(function($order) {
+            return floatval($order->total ?? 0);
+        });
+        $totalOrders = $orders->count();
+        $data['summary'] = [
+            'totalRevenue' => $totalRevenue,
+            'totalOrders' => $totalOrders,
+            'averageOrderValue' => $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0,
+        ];
+        
+        // Size breakdown
+        $sizeGroups = $orders->groupBy('size');
+        $data['sizeBreakdown'] = [];
+        foreach ($sizeGroups as $size => $sizeOrders) {
+            $sizeRevenue = $sizeOrders->sum(function($order) {
+                return floatval($order->total ?? 0);
+            });
+            $data['sizeBreakdown'][$size] = [
+                'orders' => $sizeOrders->count(),
+                'revenue' => $sizeRevenue,
+                'percentage' => $totalRevenue > 0 ? round(($sizeRevenue / $totalRevenue) * 100, 1) : 0,
+            ];
+        }
+        
+        // Seasonal analytics
+        if ($includeSeasonalAnalytics) {
+            $monthlyGroups = $orders->groupBy(function($order) {
+                return date('F Y', strtotime($order->order_date));
+            });
+            
+            $data['seasonalData'] = [];
+            foreach ($monthlyGroups as $month => $monthOrders) {
+                $monthRevenue = $monthOrders->sum(function($order) {
+                    return floatval($order->total ?? 0);
+                });
+                $data['seasonalData'][$month] = [
+                    'orders' => $monthOrders->count(),
+                    'revenue' => $monthRevenue,
+                ];
+            }
+        }
+        
+        // Trends analysis
+        if ($includeTrends) {
+            $data['trends'] = [
+                'Growth Rate' => $this->calculateGrowthRate($orders),
+                'Best Performing Size' => $this->getBestPerformingSize($orders),
+                'Peak Sales Month' => $this->getPeakSalesMonth($orders),
+            ];
+        }
+        
+        return $data;
+    }
+
+    private function calculateGrowthRate($orders)
+    {
+        // Simple month-over-month calculation
+        $currentMonth = $orders->filter(function($order) {
+            return date('Y-m', strtotime($order->order_date)) === date('Y-m');
+        })->sum(function($order) {
+            return floatval($order->total ?? 0);
+        });
+        
+        $lastMonth = $orders->filter(function($order) {
+            return date('Y-m', strtotime($order->order_date)) === date('Y-m', strtotime('-1 month'));
+        })->sum(function($order) {
+            return floatval($order->total ?? 0);
+        });
+        
+        if ($lastMonth > 0) {
+            return round((($currentMonth - $lastMonth) / $lastMonth) * 100, 1) . '%';
+        }
+        
+        return 'N/A';
+    }
+
+    private function getBestPerformingSize($orders)
+    {
+        $sizeRevenue = $orders->groupBy('size')->map(function($sizeOrders) {
+            return $sizeOrders->sum(function($order) {
+                return floatval($order->total ?? 0);
+            });
+        });
+        return $sizeRevenue->sortDesc()->keys()->first() ?? 'N/A';
+    }
+
+    private function getPeakSalesMonth($orders)
+    {
+        $monthlyRevenue = $orders->groupBy(function($order) {
+            return date('F Y', strtotime($order->order_date));
+        })->map(function($monthOrders) {
+            return $monthOrders->sum(function($order) {
+                return floatval($order->total ?? 0);
+            });
+        });
+        
+        return $monthlyRevenue->sortDesc()->keys()->first() ?? 'N/A';
     }
     
     /**

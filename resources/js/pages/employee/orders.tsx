@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Package, ShoppingCart, User, LogOut, Eye, Check, Truck, Search, Filter, Calendar, MoreHorizontal, Menu, X, Camera, Upload, Plus, Settings, BarChart3 } from 'lucide-react';
+import { Package, ShoppingCart, User, LogOut, Eye, Check, Truck, Search, Filter, Calendar, MoreHorizontal, Menu, X, Camera, Upload, Plus, Settings, BarChart3, Clock, Play, CheckCircle } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -36,31 +38,66 @@ interface Order {
     delivery_mode: 'pick_up' | 'deliver';
     order_date: string;
     delivery_date?: string;
-    status: 'pending' | 'out_for_delivery' | 'completed';
+    status: 'pending' | 'out_for_delivery' | 'completed' | 'cancelled';
     total: number;
     delivery_rider_id?: number;
     deliveryRider?: User;
     delivery_photo?: string;
+    cancellation_reason?: string;
+    cancelled_at?: string;
     archived?: boolean; // Add archived field for type safety
 }
 
 interface InventoryItem {
+    product_name: string;
     size: string;
     price: number;
     status: string;
     quantity: number;
+    archived_at?: string | null; // Add archived field
+}
+
+interface JobOrder {
+    job_order_id: number;
+    job_order_number: string;
+    product_name: string;
+    size: string;
+    quantity_to_produce: number;
+    status: string;
+    production_date: string;
+    started_at?: string;
+    completed_at?: string;
+    cancelled_at?: string;
+    created_by: number;
+    assigned_to?: number;
+    notes?: string;
+    cancellation_reason?: string;
+    creator: User;
+    assigned_user?: User;
+    created_at: string;
 }
 
 interface EmployeeOrdersProps {
     user: User;
     orders: Order[];
     inventory: InventoryItem[];
+    jobOrders: JobOrder[];
 }
 
-export default function EmployeeOrders({ user, orders, inventory = [] }: EmployeeOrdersProps) {
+export default function EmployeeOrders({ user, orders, inventory = [], jobOrders = [] }: EmployeeOrdersProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [jobOrderSearchTerm, setJobOrderSearchTerm] = useState('');
+    const [jobOrderStatusFilter, setJobOrderStatusFilter] = useState('all');
     const [isOrderDetailsModalOpen, setIsOrderDetailsModalOpen] = useState(false);
+    const [isJobOrderDetailsModalOpen, setIsJobOrderDetailsModalOpen] = useState(false);
+    const [showCancelJobOrderModal, setShowCancelJobOrderModal] = useState(false);
+    const [showCancelOrderModal, setShowCancelOrderModal] = useState(false);
+    const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
+    const [jobOrderToCancel, setJobOrderToCancel] = useState<JobOrder | null>(null);
+    const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
+    const [cancellationReason, setCancellationReason] = useState('');
+    const [orderCancellationReason, setOrderCancellationReason] = useState('');
     const [isPhotoUploadModalOpen, setIsPhotoUploadModalOpen] = useState(false);
     const [isCreateOrderModalOpen, setIsCreateOrderModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -80,6 +117,27 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
     const getTodayDate = () => {
         const today = new Date();
         return today.toISOString().split('T')[0];
+    };
+
+    const getPhilippinesDate = () => {
+        // Get current time in Philippines (UTC+8)
+        const now = new Date();
+        const philippinesTime = new Date(now.getTime() + (8 * 60 * 60 * 1000)); // Add 8 hours for UTC+8
+        
+        // Get hours in Philippines time (0-23)
+        const hours = philippinesTime.getUTCHours();
+        
+        // Business Logic:
+        // If current time < 2:00 AM (hours 0-1), use yesterday's date
+        // If current time >= 2:00 AM (hours 2-23), use today's date
+        if (hours < 2) {
+            // Use previous day if before 2:00 AM (hours 0 or 1)
+            const previousDay = new Date(philippinesTime.getTime() - (24 * 60 * 60 * 1000));
+            return previousDay.toISOString().split('T')[0];
+        } else {
+            // Use today's date for 2:00 AM and later
+            return philippinesTime.toISOString().split('T')[0];
+        }
     };
 
     // Cleanup camera stream on component unmount
@@ -105,11 +163,29 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
         contact_number: '',
         quantity: '',
         size: '',
-        order_date: getTodayDate(),
+        order_date: getPhilippinesDate(),
         delivery_date: '',
         delivery_mode: 'deliver', // Default to deliver for employees
         delivery_rider_id: user.id.toString(), // Set current employee as delivery rider
     });
+
+    // Monitor time and update order date at 2:00 AM Philippines time
+    useEffect(() => {
+        const updateOrderDate = () => {
+            const newDate = getPhilippinesDate();
+            if (data.order_date !== newDate) {
+                setData('order_date', newDate);
+            }
+        };
+
+        // Update immediately
+        updateOrderDate();
+
+        // Set up interval to check every minute
+        const interval = setInterval(updateOrderDate, 60000);
+
+        return () => clearInterval(interval);
+    }, [data.order_date, setData]);
 
     const handleLogout = () => {
         setIsLogoutModalOpen(true);
@@ -294,12 +370,47 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
     };
 
     const handleStatusUpdate = async (orderId: string, newStatus: string) => {
+        // If cancelling an order, open cancellation modal
+        if (newStatus === 'cancelled') {
+            const order = orders.find(o => o.order_id === orderId);
+            if (order) {
+                setOrderToCancel(order);
+                setShowCancelOrderModal(true);
+                return;
+            }
+        }
+        
         try {
             await router.post(`/employee/orders/${orderId}/update-status`, {
                 status: newStatus
             });
         } catch (error) {
             console.error('Failed to update status:', error);
+        }
+    };
+
+    // Handle order cancellation with reason  
+    const handleCancelOrder = (order: Order) => {
+        setOrderToCancel(order);
+        setOrderCancellationReason('');
+        setShowCancelOrderModal(true);
+    };
+
+    const handleConfirmCancelOrder = async () => {
+        if (orderToCancel && orderCancellationReason.trim()) {
+            try {
+                await router.post(`/employee/orders/${orderToCancel.order_id}/update-status`, {
+                    status: 'cancelled',
+                    cancellation_reason: orderCancellationReason.trim()
+                });
+                setShowCancelOrderModal(false);
+                setOrderToCancel(null);
+                setOrderCancellationReason('');
+            } catch (error) {
+                console.error('Failed to cancel order:', error);
+            }
+        } else {
+            alert('Please provide a cancellation reason.');
         }
     };
 
@@ -312,7 +423,16 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
             }
             
             if (!data.quantity || data.quantity === '') {
-                return inventory.filter(item => item && item.status === 'available' && item.quantity > 0) || [];
+                const items = inventory.filter(item => item && (item.status === 'available' || item.status === 'critical') && item.quantity >= 0 && !item.archived_at) || [];
+                // Group by product_name + size combination to allow different products with same size
+                const uniqueItems = new Map();
+                items.forEach(item => {
+                    const key = `${item.product_name}-${item.size}`;
+                    if (!uniqueItems.has(key)) {
+                        uniqueItems.set(key, item);
+                    }
+                });
+                return Array.from(uniqueItems.values());
             }
             
             const requestedQuantity = parseInt(data.quantity);
@@ -320,17 +440,52 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
             
             const filtered = inventory.filter(item => {
                 return item && 
-                       item.status === 'available' && 
-                       item.quantity > 0 && 
-                       item.quantity >= requestedQuantity;
+                       (item.status === 'available' || item.status === 'critical') && 
+                       item.quantity >= 0 && 
+                       item.quantity >= requestedQuantity &&
+                       !item.archived_at; // Exclude archived items
             }) || [];
             
-            return filtered;
+            // Group by product_name + size combination to allow different products with same size
+            const uniqueItems = new Map();
+            filtered.forEach(item => {
+                const key = `${item.product_name}-${item.size}`;
+                if (!uniqueItems.has(key)) {
+                    uniqueItems.set(key, item);
+                }
+            });
+            const groupedFiltered = Array.from(uniqueItems.values());
+            
+            return groupedFiltered;
         } catch (error) {
             console.error('Error in availableItems calculation:', error);
             return [];
         }
     }, [inventory, data.quantity]);
+
+    // Check if quantity exceeds all available stock
+    const isQuantityTooHigh = useMemo(() => {
+        if (!data.quantity || !inventory || !Array.isArray(inventory)) return false;
+        
+        const availableInventory = inventory.filter(item => item && (item.status === 'available' || item.status === 'critical') && item.quantity >= 0 && !item.archived_at);
+        if (availableInventory.length === 0) return false;
+        
+        const requestedQuantity = parseInt(data.quantity);
+        if (isNaN(requestedQuantity)) return false;
+        
+        const maxStock = Math.max(...availableInventory.map(item => item.quantity));
+        return requestedQuantity > maxStock;
+    }, [data.quantity, inventory]);
+
+    // get maximum available stock
+    const maxStock = useMemo(() => {
+        if (!inventory || !Array.isArray(inventory)) return 0;
+        
+        const availableInventory = inventory.filter(item => item && (item.status === 'available' || item.status === 'critical') && item.quantity >= 0 && !item.archived_at);
+        if (availableInventory.length === 0) return 0;
+        
+        return Math.max(...availableInventory.map(item => item.quantity));
+    }, [inventory]);
 
     // Form validation
     const validateForm = () => {
@@ -378,6 +533,34 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
         return errors;
     };
 
+    // Handle modal close - reset form when modal is closed
+    const handleCreateOrderModalOpenChange = (open: boolean) => {
+        setIsCreateOrderModalOpen(open);
+        if (!open) {
+            // Reset form data when closing modal
+            reset();
+            // Set default values after reset
+            setData({
+                customer_name: '',
+                address: '',
+                contact_number: '',
+                quantity: '',
+                size: '',
+                order_date: getPhilippinesDate(),
+                delivery_date: '',
+                delivery_mode: 'deliver', // Default to deliver for employees
+                delivery_rider_id: user.id.toString(), // Set current employee as delivery rider
+            });
+            // Clear validation errors
+            setValidationErrors({});
+        } else {
+            // When opening modal, ensure order date is set to current Philippines date
+            const currentDate = getPhilippinesDate();
+            setData('order_date', currentDate);
+            setData('delivery_rider_id', user.id.toString());
+        }
+    };
+
     // Form submission
     const handleCreateOrderSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -418,13 +601,6 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
     }, [data.delivery_mode, user.id]);
 
     useEffect(() => {
-        if (isCreateOrderModalOpen) {
-            setData('order_date', getTodayDate());
-            setData('delivery_rider_id', user.id.toString());
-        }
-    }, [isCreateOrderModalOpen, user.id]);
-
-    useEffect(() => {
         if (showSuccess) {
             const timer = setTimeout(() => {
                 setShowSuccess(false);
@@ -453,6 +629,72 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
             }
         });
     }, [orders, searchTerm, statusFilter]);
+
+    const filteredJobOrders = useMemo(() => {
+        if (!jobOrders || !Array.isArray(jobOrders)) return [];
+        
+        return jobOrders.filter(jobOrder => {
+            try {
+                const searchTermLower = jobOrderSearchTerm.toLowerCase();
+                const matchesSearch = jobOrderSearchTerm === '' || 
+                    (jobOrder?.job_order_number || '').toLowerCase().includes(searchTermLower) ||
+                    (jobOrder?.product_name || '').toLowerCase().includes(searchTermLower) ||
+                    (jobOrder?.size || '').toLowerCase().includes(searchTermLower);
+
+                const matchesStatus = jobOrderStatusFilter === 'all' || jobOrder?.status === jobOrderStatusFilter;
+
+                return matchesSearch && matchesStatus;
+            } catch (error) {
+                console.error('Error filtering job order:', error, jobOrder);
+                return false;
+            }
+        });
+    }, [jobOrders, jobOrderSearchTerm, jobOrderStatusFilter]);
+
+    // Job order status update functions
+    const handleJobOrderStatusUpdate = (jobOrderId: number, newStatus: string) => {
+        router.patch(`/employee/job-orders/${jobOrderId}/status`, {
+            status: newStatus
+        });
+    };
+
+    const handleViewJobOrderDetails = (jobOrder: JobOrder) => {
+        setSelectedJobOrder(jobOrder);
+        setIsJobOrderDetailsModalOpen(true);
+    };
+
+    const handleCancelJobOrder = (jobOrder: JobOrder) => {
+        setJobOrderToCancel(jobOrder);
+        setCancellationReason('');
+        setShowCancelJobOrderModal(true);
+    };
+
+    const handleConfirmCancelJobOrder = () => {
+        if (jobOrderToCancel && cancellationReason.trim()) {
+            router.patch(`/employee/job-orders/${jobOrderToCancel.job_order_id}/status`, {
+                status: 'cancelled',
+                cancellation_reason: cancellationReason.trim()
+            });
+            setShowCancelJobOrderModal(false);
+            setJobOrderToCancel(null);
+            setCancellationReason('');
+        }
+    };
+
+    const getJobOrderStatusBadge = (status: string) => {
+        switch (status) {
+            case 'pending':
+                return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">● Pending</Badge>;
+            case 'in_progress':
+                return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">● In Progress</Badge>;
+            case 'completed':
+                return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">● Completed</Badge>;
+            case 'cancelled':
+                return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">● Cancelled</Badge>;
+            default:
+                return <Badge variant="outline">{status}</Badge>;
+        }
+    };
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -574,8 +816,8 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h1 className="text-2xl md:text-3xl font-bold mb-2">My Orders</h1>
-                                <p className="text-blue-100 text-sm md:text-base">Manage orders assigned to you</p>
+                                <h1 className="text-2xl md:text-3xl font-bold mb-2">My Work</h1>
+                                <p className="text-blue-100 text-sm md:text-base">Manage your assigned orders and production tasks</p>
                             </div>
                             <Button
                                 onClick={() => setIsCreateOrderModalOpen(true)}
@@ -631,12 +873,32 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                         </div>
                     </div>
 
-                    {/* Orders Section */}
-                    <div className="bg-white rounded-lg shadow-md">
-                        <div className="p-6 border-b border-gray-200">
-                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                                {/* Search */}
-                                <div className="flex-1 max-w-md">
+                    {/* Tabs Section */}
+                    <Tabs defaultValue="orders" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2 bg-gray-200 p-1 rounded-xl h-12 mb-6">
+                            <TabsTrigger 
+                                value="orders" 
+                                className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium flex items-center gap-2"
+                            >
+                                <ShoppingCart className="w-4 h-4" />
+                                Delivery Orders
+                            </TabsTrigger>
+                            <TabsTrigger 
+                                value="job-orders" 
+                                className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium flex items-center gap-2"
+                            >
+                                <Package className="w-4 h-4" />
+                                Production Tasks
+                            </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="orders">
+                            {/* Orders Section */}
+                            <div className="bg-white rounded-lg shadow-md">
+                                <div className="p-6 border-b border-gray-200">
+                                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                        {/* Search */}
+                                        <div className="flex-1 max-w-md">
                                     <div className="relative">
                                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                                         <Input
@@ -680,20 +942,20 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                         {/* Orders Table - Desktop */}
                         <div className="hidden md:block">
                             <div className="overflow-x-auto">
-                                <Table>
+                                <Table className="w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Status</TableHead>
-                                            <TableHead>Order ID</TableHead>
-                                            <TableHead>Customer</TableHead>
-                                            <TableHead>Address</TableHead>
-                                            <TableHead>Size</TableHead>
-                                            <TableHead>Quantity</TableHead>
-                                            <TableHead>Delivery Mode</TableHead>
-                                            <TableHead>Order Date</TableHead>
-                                            <TableHead>Delivery Date</TableHead>
-                                            <TableHead>Total</TableHead>
-                                            <TableHead>Actions</TableHead>
+                                            <TableHead className="font-semibold w-[8%]">Status</TableHead>
+                                            <TableHead className="font-semibold w-[6%]">Order ID</TableHead>
+                                            <TableHead className="font-semibold w-[15%]">Customer</TableHead>
+                                            <TableHead className="font-semibold w-[18%]">Address</TableHead>
+                                            <TableHead className="font-semibold w-[8%]">Size</TableHead>
+                                            <TableHead className="font-semibold w-[7%]">Quantity</TableHead>
+                                            <TableHead className="font-semibold w-[10%]">Mode</TableHead>
+                                            <TableHead className="font-semibold w-[9%]">Order Date</TableHead>
+                                            <TableHead className="font-semibold w-[9%]">Delivery/Pick-Up Date</TableHead>
+                                            <TableHead className="font-semibold w-[8%]">Total</TableHead>
+                                            <TableHead className="font-semibold w-[2%]">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -706,23 +968,23 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                         ) : (
                                             filteredOrders.map((order) => (
                                                 <TableRow key={order.order_id} className="hover:bg-gray-50">
-                                                    <TableCell>
+                                                    <TableCell className="p-2">
                                                         {getStatusBadge(order.status)}
                                                     </TableCell>
-                                                    <TableCell className="font-medium">{order.order_id}</TableCell>
-                                                    <TableCell>{order.customer_name}</TableCell>
-                                                    <TableCell className="max-w-32 truncate">{order.address}</TableCell>
-                                                    <TableCell>{order.size}</TableCell>
-                                                    <TableCell>{order.quantity}</TableCell>
-                                                    <TableCell>
+                                                    <TableCell className="font-medium text-sm p-2">{order.order_id}</TableCell>
+                                                    <TableCell className="break-words text-sm leading-tight p-2" title={order.customer_name}>{order.customer_name}</TableCell>
+                                                    <TableCell className="break-words text-sm leading-tight p-2" title={order.address}>{order.address}</TableCell>
+                                                    <TableCell className="capitalize text-sm p-2">{order.size}</TableCell>
+                                                    <TableCell className="text-sm p-2">{order.quantity}</TableCell>
+                                                    <TableCell className="capitalize text-sm break-words p-2">
                                                         <span className="capitalize">
                                                             {order.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}
                                                         </span>
                                                     </TableCell>
-                                                    <TableCell>{formatDate(order.order_date)}</TableCell>
-                                                    <TableCell>{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</TableCell>
-                                                    <TableCell className="font-semibold">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</TableCell>
-                                                    <TableCell>
+                                                    <TableCell className="text-sm p-2">{formatDate(order.order_date)}</TableCell>
+                                                    <TableCell className="text-sm p-2">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</TableCell>
+                                                    <TableCell className="font-medium text-sm p-2">₱{order.total ? parseFloat(order.total.toString()).toFixed(2) : '0.00'}</TableCell>
+                                                    <TableCell className="p-2">
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
                                                                 <Button 
@@ -740,13 +1002,22 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                                                     View Details
                                                                 </DropdownMenuItem>
                                                                 {order.status === 'pending' && (
-                                                                    <DropdownMenuItem 
-                                                                        onClick={() => handleStatusUpdate(order.order_id, 'out_for_delivery')}
-                                                                        className="text-blue-600"
-                                                                    >
-                                                                        <Truck className="mr-2 h-4 w-4" />
-                                                                        Start Delivery
-                                                                    </DropdownMenuItem>
+                                                                    <>
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => handleStatusUpdate(order.order_id, 'out_for_delivery')}
+                                                                            className="text-blue-600"
+                                                                        >
+                                                                            <Truck className="mr-2 h-4 w-4" />
+                                                                            Start Delivery
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => handleCancelOrder(order)}
+                                                                            className="text-red-600"
+                                                                        >
+                                                                            <X className="mr-2 h-4 w-4" />
+                                                                            Cancel Order
+                                                                        </DropdownMenuItem>
+                                                                    </>
                                                                 )}
                                                                 {order.status === 'out_for_delivery' && (
                                                                     <DropdownMenuItem 
@@ -792,13 +1063,22 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                                             View Details
                                                         </DropdownMenuItem>
                                                         {order.status === 'pending' && (
-                                                            <DropdownMenuItem 
-                                                                onClick={() => handleStatusUpdate(order.order_id, 'out_for_delivery')}
-                                                                className="text-blue-600"
-                                                            >
-                                                                <Truck className="mr-2 h-4 w-4" />
-                                                                Start Delivery
-                                                            </DropdownMenuItem>
+                                                            <>
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => handleStatusUpdate(order.order_id, 'out_for_delivery')}
+                                                                    className="text-blue-600"
+                                                                >
+                                                                    <Truck className="mr-2 h-4 w-4" />
+                                                                    Start Delivery
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => handleCancelOrder(order)}
+                                                                    className="text-red-600"
+                                                                >
+                                                                    <X className="mr-2 h-4 w-4" />
+                                                                    Cancel Order
+                                                                </DropdownMenuItem>
+                                                            </>
                                                         )}
                                                         {order.status === 'out_for_delivery' && (
                                                             <DropdownMenuItem 
@@ -828,7 +1108,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                                 <div className="font-medium text-gray-800">{order.quantity}</div>
                                             </div>
                                             <div>
-                                                <span className="text-gray-700">Delivery:</span>
+                                                <span className="text-gray-700">Mode:</span>
                                                 <div className="font-medium text-gray-800 capitalize">{order.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}</div>
                                             </div>
                                             <div>
@@ -836,7 +1116,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                                 <div className="font-medium text-gray-800">{formatDate(order.order_date)}</div>
                                             </div>
                                             <div>
-                                                <span className="text-gray-700">Delivery Date:</span>
+                                                <span className="text-gray-700">Delivery/Pick-Up Date:</span>
                                                 <div className="font-medium text-gray-800">{order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}</div>
                                             </div>
                                         </div>
@@ -856,6 +1136,153 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                             )}
                         </div>
                     </div>
+                        </TabsContent>
+
+                        <TabsContent value="job-orders">
+                            {/* Job Orders Section */}
+                            <div className="bg-white rounded-lg shadow-md">
+                                <div className="p-6 border-b border-gray-200">
+                                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                        {/* Search */}
+                                        <div className="flex-1 max-w-md">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                                <Input
+                                                    type="search"
+                                                    placeholder="Search by job order, product, or size"
+                                                    value={jobOrderSearchTerm}
+                                                    onChange={(e) => setJobOrderSearchTerm(e.target.value)}
+                                                    className="pl-10"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Filters */}
+                                        <div className="flex gap-4 text-gray-600">
+                                            {/* Status Filter */}
+                                            <div>
+                                                <select 
+                                                    value={jobOrderStatusFilter} 
+                                                    onChange={e => setJobOrderStatusFilter(e.target.value)}
+                                                    className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    style={{ 
+                                                        color: '#111827', 
+                                                        backgroundColor: 'white',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                >
+                                                    <option value="all" style={{ color: '#111827', backgroundColor: 'white' }}>All Status</option>
+                                                    <option value="pending" style={{ color: '#111827', backgroundColor: 'white' }}>Pending</option>
+                                                    <option value="in_progress" style={{ color: '#111827', backgroundColor: 'white' }}>In Progress</option>
+                                                    <option value="completed" style={{ color: '#111827', backgroundColor: 'white' }}>Completed</option>
+                                                    <option value="cancelled" style={{ color: '#111827', backgroundColor: 'white' }}>Cancelled</option>
+                                                </select>
+                                            </div>
+
+                                            {/* Results Count */}
+                                            <div className="flex items-center text-sm text-gray-500">
+                                                Showing {filteredJobOrders.length} of {jobOrders.length} job orders
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Job Orders Table */}
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="bg-gray-50">
+                                                <TableHead className="font-semibold text-gray-700">Job Order #</TableHead>
+                                                <TableHead className="font-semibold text-gray-700">Product</TableHead>
+                                                <TableHead className="font-semibold text-gray-700">Size</TableHead>
+                                                <TableHead className="font-semibold text-gray-700">Quantity</TableHead>
+                                                <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                                                <TableHead className="font-semibold text-gray-700">Production Date</TableHead>
+                                                <TableHead className="font-semibold text-gray-700">Created By</TableHead>
+                                                <TableHead className="font-semibold text-gray-700">Actions</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredJobOrders.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={8} className="text-center py-12">
+                                                        <div className="text-gray-500">
+                                                            {jobOrderSearchTerm || jobOrderStatusFilter !== 'all' ? 'No job orders found matching your filters' : 'No job orders assigned to you'}
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                filteredJobOrders.map((jobOrder) => (
+                                                    <TableRow key={jobOrder.job_order_id} className="hover:bg-gray-50">
+                                                        <TableCell className="font-medium text-blue-600">
+                                                            {jobOrder.job_order_number}
+                                                        </TableCell>
+                                                        <TableCell>{jobOrder.product_name}</TableCell>
+                                                        <TableCell>{jobOrder.size}</TableCell>
+                                                        <TableCell>{jobOrder.quantity_to_produce}</TableCell>
+                                                        <TableCell>
+                                                            {getJobOrderStatusBadge(jobOrder.status)}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {new Date(jobOrder.production_date).toLocaleDateString()}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {jobOrder.creator.name || jobOrder.creator.username}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <Button variant="ghost" size="sm">
+                                                                        <MoreHorizontal className="w-4 h-4" />
+                                                                    </Button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    <DropdownMenuItem 
+                                                                        onClick={() => handleViewJobOrderDetails(jobOrder)}
+                                                                        className="text-blue-600"
+                                                                    >
+                                                                        <Eye className="w-4 h-4 mr-2" />
+                                                                        View Details
+                                                                    </DropdownMenuItem>
+                                                                    {jobOrder.status === 'pending' && (
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => handleJobOrderStatusUpdate(jobOrder.job_order_id, 'in_progress')}
+                                                                            className="text-blue-600"
+                                                                        >
+                                                                            <Play className="w-4 h-4 mr-2" />
+                                                                            Start Production
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                    {jobOrder.status === 'in_progress' && (
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => handleJobOrderStatusUpdate(jobOrder.job_order_id, 'completed')}
+                                                                            className="text-green-600"
+                                                                        >
+                                                                            <CheckCircle className="w-4 h-4 mr-2" />
+                                                                            Mark Complete
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                    {(jobOrder.status === 'pending' || jobOrder.status === 'in_progress') && (
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => handleCancelJobOrder(jobOrder)}
+                                                                            className="text-red-600"
+                                                                        >
+                                                                            <X className="w-4 h-4 mr-2" />
+                                                                            Cancel
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
                 </main>
             </div>
 
@@ -897,7 +1324,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                         <p className="font-semibold text-sm">{selectedOrder.quantity}</p>
                                     </div>
                                     <div>
-                                        <span className="text-xs text-gray-500">Delivery Mode</span>
+                                        <span className="text-xs text-gray-500">Mode</span>
                                         <p className="font-semibold text-sm">{selectedOrder.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}</p>
                                     </div>
                                     <div>
@@ -905,7 +1332,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                         <p className="font-semibold text-sm">{formatDate(selectedOrder.order_date)}</p>
                                     </div>
                                     <div>
-                                        <span className="text-xs text-gray-500">Delivery Date</span>
+                                        <span className="text-xs text-gray-500">Delivery/Pick-Up Date</span>
                                         <p className="font-semibold text-sm">{selectedOrder.delivery_date ? formatDate(selectedOrder.delivery_date) : 'N/A'}</p>
                                     </div>
                                     <div>
@@ -919,46 +1346,60 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                             <div className="bg-white border rounded-lg p-2">
                                 <h3 className="text-base font-semibold mb-2 text-center text-blue-600">Transaction Status</h3>
                                 
-                                <div className="flex justify-center items-center space-x-3">
-                                    {/* Waiting Confirmation */}
-                                    <div className="flex flex-col items-center text-center">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
-                                            selectedOrder.status === 'pending' ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'
-                                        }`}>
-                                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                                {selectedOrder.status === 'cancelled' ? (
+                                    /* Cancelled Order Status */
+                                    <div className="flex justify-center items-center">
+                                        <div className="flex flex-col items-center text-center">
+                                            <div className="w-12 h-12 rounded-full flex items-center justify-center mb-2 bg-red-500 text-white">
+                                                <X className="w-6 h-6" />
+                                            </div>
+                                            <p className="text-sm font-medium text-red-600">Order Cancelled</p>
+                                            <p className="text-xs text-gray-500">Transaction terminated</p>
                                         </div>
-                                        <p className="text-xs font-medium">Waiting</p>
-                                        <p className="text-xs text-gray-500">Confirmation</p>
                                     </div>
-
-                                    {/* Dotted Line */}
-                                    <div className="flex-1 border-t-2 border-dotted border-gray-300 mx-1"></div>
-
-                                    {/* Package on Delivery */}
-                                    <div className="flex flex-col items-center text-center">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
-                                            selectedOrder.status === 'out_for_delivery' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-400'
-                                        }`}>
-                                            <Truck className="w-4 h-4" />
+                                ) : (
+                                    /* Normal Order Status Flow */
+                                    <div className="flex justify-center items-center space-x-3">
+                                        {/* Waiting Confirmation */}
+                                        <div className="flex flex-col items-center text-center">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                                                selectedOrder.status === 'pending' ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'
+                                            }`}>
+                                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                                            </div>
+                                            <p className="text-xs font-medium">Waiting</p>
+                                            <p className="text-xs text-gray-500">Confirmation</p>
                                         </div>
-                                        <p className="text-xs font-medium">Package</p>
-                                        <p className="text-xs text-gray-500">On Delivery</p>
-                                    </div>
 
-                                    {/* Dotted Line */}
-                                    <div className="flex-1 border-t-2 border-dotted border-gray-300 mx-1"></div>
+                                        {/* Dotted Line */}
+                                        <div className="flex-1 border-t-2 border-dotted border-gray-300 mx-1"></div>
 
-                                    {/* Package Delivered */}
-                                    <div className="flex flex-col items-center text-center">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
-                                            selectedOrder.status === 'completed' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
-                                        }`}>
-                                            <Check className="w-4 h-4" />
+                                        {/* Package on Delivery */}
+                                        <div className="flex flex-col items-center text-center">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                                                selectedOrder.status === 'out_for_delivery' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-400'
+                                            }`}>
+                                                <Truck className="w-4 h-4" />
+                                            </div>
+                                            <p className="text-xs font-medium">Package</p>
+                                            <p className="text-xs text-gray-500">On Delivery</p>
                                         </div>
-                                        <p className="text-xs font-medium">Package</p>
-                                        <p className="text-xs text-gray-500">Delivered</p>
+
+                                        {/* Dotted Line */}
+                                        <div className="flex-1 border-t-2 border-dotted border-gray-300 mx-1"></div>
+
+                                        {/* Package Delivered */}
+                                        <div className="flex flex-col items-center text-center">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                                                selectedOrder.status === 'completed' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'
+                                            }`}>
+                                                <Check className="w-4 h-4" />
+                                            </div>
+                                            <p className="text-xs font-medium">Package</p>
+                                            <p className="text-xs text-gray-500">Delivered</p>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {/* Current Status Text */}
                                 <div className="mt-2 text-center">
@@ -967,6 +1408,29 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                     </p>
                                 </div>
                             </div>
+
+                            {/* Cancellation Reason Section */}
+                            {selectedOrder.status === 'cancelled' && selectedOrder.cancellation_reason && (
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                                    <h3 className="text-base font-semibold mb-2 text-center text-red-600">Cancellation Information</h3>
+                                    <div className="space-y-2">
+                                        <div>
+                                            <span className="text-xs text-gray-500">Cancellation Reason</span>
+                                            <p className="text-sm text-gray-800 bg-white p-2 rounded border">
+                                                {selectedOrder.cancellation_reason}
+                                            </p>
+                                        </div>
+                                        {selectedOrder.cancelled_at && (
+                                            <div>
+                                                <span className="text-xs text-gray-500">Cancelled On</span>
+                                                <p className="text-sm font-medium text-red-600">
+                                                    {formatDate(selectedOrder.cancelled_at)}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Delivery Photo Section */}
                             {selectedOrder.delivery_photo && (
@@ -997,17 +1461,30 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                         Close
                                     </Button>
                                     {selectedOrder.status === 'pending' && (
-                                        <Button
-                                            onClick={() => {
-                                                handleStatusUpdate(selectedOrder.order_id, 'out_for_delivery');
-                                                setIsOrderDetailsModalOpen(false);
-                                            }}
-                                            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
-                                            size="sm"
-                                        >
-                                            <Truck className="h-4 w-4 mr-2" />
-                                            Start Delivery
-                                        </Button>
+                                        <>
+                                            <Button
+                                                onClick={() => {
+                                                    handleStatusUpdate(selectedOrder.order_id, 'out_for_delivery');
+                                                    setIsOrderDetailsModalOpen(false);
+                                                }}
+                                                className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
+                                                size="sm"
+                                            >
+                                                <Truck className="h-4 w-4 mr-2" />
+                                                Start Delivery
+                                            </Button>
+                                            <Button
+                                                onClick={() => {
+                                                    handleCancelOrder(selectedOrder);
+                                                }}
+                                                variant="outline"
+                                                className="border-red-600 text-red-600 hover:bg-red-50 min-w-[120px]"
+                                                size="sm"
+                                            >
+                                                <X className="h-4 w-4 mr-2" />
+                                                Cancel Order
+                                            </Button>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -1169,7 +1646,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
             </Dialog>
 
             {/* Create Order Modal */}
-            <Dialog open={isCreateOrderModalOpen} onOpenChange={setIsCreateOrderModalOpen}>
+            <Dialog open={isCreateOrderModalOpen} onOpenChange={handleCreateOrderModalOpenChange}>
                 <DialogContent className="!max-w-[1400px] !w-[98vw] max-h-[95vh] overflow-y-auto p-8">
                     <DialogHeader className="mb-6">
                         <DialogTitle className="text-3xl font-bold">Create New Order</DialogTitle>
@@ -1281,6 +1758,11 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                                 {validationErrors.quantity || (Array.isArray(errors.quantity) ? errors.quantity[0] : errors.quantity)}
                                             </p>
                                         )}
+                                        {isQuantityTooHigh && !validationErrors.quantity && !errors.quantity && (
+                                            <p className="text-sm text-amber-600">
+                                                ⚠️ Quantity exceeds all available stock. Maximum available: {maxStock}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="space-y-3">
                                         <Label htmlFor="size" className="text-base font-medium">Size</Label>
@@ -1348,7 +1830,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                             )}
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="delivery_date" className="text-sm text-gray-600">Delivery Date</Label>
+                                            <Label htmlFor="delivery_date" className="text-sm text-gray-600">Delivery/Pick-Up Date</Label>
                                             <div className="relative">
                                                 <Input
                                                     id="delivery_date"
@@ -1380,7 +1862,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
 
                                 {/* Mode of Delivery */}
                                 <div className="space-y-3">
-                                    <Label className="text-base font-medium">Mode of Delivery</Label>
+                                    <Label className="text-base font-medium">Mode</Label>
                                     <RadioGroup 
                                         value={data.delivery_mode} 
                                         onValueChange={(value) => setData('delivery_mode', value)}
@@ -1402,7 +1884,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        onClick={() => setIsCreateOrderModalOpen(false)}
+                                        onClick={() => handleCreateOrderModalOpenChange(false)}
                                         className="px-6 py-3 text-base"
                                     >
                                         Cancel
@@ -1462,7 +1944,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                             </div>
                                         </div>
                                         <div>
-                                            <div className="text-sm text-gray-500">Delivery Date</div>
+                                            <div className="text-sm text-gray-500">Delivery/Pick-Up Date</div>
                                             <div className="text-base text-gray-600 bg-white p-3 rounded border">
                                                 {data.delivery_date || '00/00/00'}
                                             </div>
@@ -1471,7 +1953,7 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                                 </div>
 
                                 <div>
-                                    <Label className="text-base font-medium">Mode of Delivery</Label>
+                                    <Label className="text-base font-medium">Mode</Label>
                                     <div className="text-base text-gray-600 mt-2">
                                         <div className="flex items-center space-x-3 mt-2">
                                             <div className={`w-3 h-3 rounded-full ${data.delivery_mode === 'pick_up' ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
@@ -1514,6 +1996,270 @@ export default function EmployeeOrders({ user, orders, inventory = [] }: Employe
                         </Button>
                         <Button variant="destructive" onClick={confirmLogout}>
                             Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Job Order Details Modal */}
+            <Dialog open={isJobOrderDetailsModalOpen} onOpenChange={setIsJobOrderDetailsModalOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Job Order Details</DialogTitle>
+                        <DialogDescription>
+                            View complete information for this job order
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {selectedJobOrder && (
+                        <div className="space-y-6">
+                            {/* Basic Information */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Job Order Number</Label>
+                                    <p className="mt-1 text-sm text-gray-900 font-mono bg-gray-50 p-2 rounded">
+                                        {selectedJobOrder.job_order_number}
+                                    </p>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Status</Label>
+                                    <div className="mt-1">
+                                        {getJobOrderStatusBadge(selectedJobOrder.status)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Product Information */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Product Name</Label>
+                                    <p className="mt-1 text-sm text-gray-900">{selectedJobOrder.product_name}</p>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Size</Label>
+                                    <p className="mt-1 text-sm text-gray-900 capitalize">{selectedJobOrder.size}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Quantity to Produce</Label>
+                                    <p className="mt-1 text-sm text-gray-900 font-semibold">
+                                        {selectedJobOrder.quantity_to_produce} units
+                                    </p>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Production Date</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {new Date(selectedJobOrder.production_date).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Assignment Information */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Created By</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {selectedJobOrder.creator.name || selectedJobOrder.creator.username || 'Unknown'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Assigned To</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {selectedJobOrder.assigned_user ? 
+                                            (selectedJobOrder.assigned_user.name || selectedJobOrder.assigned_user.username || 'No Name') 
+                                            : 'Unassigned'
+                                        }
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Dates */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Created Date</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {new Date(selectedJobOrder.created_at).toLocaleString()}
+                                    </p>
+                                </div>
+                                {selectedJobOrder.started_at && (
+                                    <div>
+                                        <Label className="text-sm font-medium text-gray-700">Started Date</Label>
+                                        <p className="mt-1 text-sm text-gray-900">
+                                            {new Date(selectedJobOrder.started_at).toLocaleString()}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {selectedJobOrder.completed_at && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Completed Date</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {new Date(selectedJobOrder.completed_at).toLocaleString()}
+                                    </p>
+                                </div>
+                            )}
+
+                            {selectedJobOrder.cancelled_at && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Cancelled Date</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {new Date(selectedJobOrder.cancelled_at).toLocaleString()}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Notes */}
+                            {selectedJobOrder.notes && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Notes</Label>
+                                    <div className="mt-1 p-3 bg-gray-50 rounded-md border">
+                                        <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                                            {selectedJobOrder.notes}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!selectedJobOrder.notes && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Notes</Label>
+                                    <p className="mt-1 text-sm text-gray-500 italic">No notes provided</p>
+                                </div>
+                            )}
+
+                            {/* Cancellation Reason */}
+                            {selectedJobOrder.cancellation_reason && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Cancellation Reason</Label>
+                                    <div className="mt-1 p-3 bg-red-50 rounded-md border border-red-200">
+                                        <p className="text-sm text-red-900 whitespace-pre-wrap">
+                                            {selectedJobOrder.cancellation_reason}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => setIsJobOrderDetailsModalOpen(false)}
+                        >
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Cancel Job Order Modal */}
+            <Dialog open={showCancelJobOrderModal} onOpenChange={setShowCancelJobOrderModal}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Cancel Job Order</DialogTitle>
+                        <DialogDescription>
+                            Please provide a reason for cancelling this job order.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {jobOrderToCancel && (
+                        <div className="space-y-4">
+                            <div className="p-3 bg-gray-50 rounded-md">
+                                <p className="text-sm font-medium text-gray-900">
+                                    {jobOrderToCancel.job_order_number}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                    {jobOrderToCancel.product_name} ({jobOrderToCancel.size}) - {jobOrderToCancel.quantity_to_produce} units
+                                </p>
+                            </div>
+
+                            <div>
+                                <Label htmlFor="cancellation_reason" className="text-sm font-medium text-gray-700">
+                                    Reason for Cancellation <span className="text-red-500">*</span>
+                                </Label>
+                                <Textarea
+                                    id="cancellation_reason"
+                                    value={cancellationReason}
+                                    onChange={(e) => setCancellationReason(e.target.value)}
+                                    placeholder="Enter the reason for cancelling this job order..."
+                                    className="mt-1"
+                                    rows={3}
+                                    required
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => {
+                                setShowCancelJobOrderModal(false);
+                                setJobOrderToCancel(null);
+                                setCancellationReason('');
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            type="button"
+                            variant="destructive"
+                            onClick={handleConfirmCancelJobOrder}
+                            disabled={!cancellationReason.trim()}
+                        >
+                            Cancel Job Order
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Cancel Order Modal */}
+            <Dialog open={showCancelOrderModal} onOpenChange={setShowCancelOrderModal}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="text-red-600">Cancel Order</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to cancel order #{orderToCancel?.order_id} for {orderToCancel?.customer_name}?
+                            <br />
+                            Please provide a reason for cancellation.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <Label htmlFor="order-cancellation-reason">Cancellation Reason *</Label>
+                            <Textarea
+                                id="order-cancellation-reason"
+                                placeholder="Please explain why this order is being cancelled..."
+                                value={orderCancellationReason}
+                                onChange={(e) => setOrderCancellationReason(e.target.value)}
+                                className="mt-1"
+                                rows={3}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => {
+                                setShowCancelOrderModal(false);
+                                setOrderToCancel(null);
+                                setOrderCancellationReason('');
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="destructive"
+                            onClick={handleConfirmCancelOrder}
+                            disabled={!orderCancellationReason.trim()}
+                        >
+                            <X className="h-4 w-4 mr-2" />
+                            Cancel Order
                         </Button>
                     </DialogFooter>
                 </DialogContent>

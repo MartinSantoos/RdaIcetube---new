@@ -12,6 +12,7 @@ class Equipment extends Model
         'equipment_name',
         'equipment_type',
         'status',
+        'broken_reason',
     ];
 
     public function maintenances()

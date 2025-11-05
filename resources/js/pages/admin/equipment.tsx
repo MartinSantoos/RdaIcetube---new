@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { BarChart3, Package, Cog, Settings, ShoppingCart, Search, Download, Plus, Calendar, X, Users, LogOut, MoreHorizontal, Eye, CheckCircle, Menu, AlertTriangle } from 'lucide-react';
+import { BarChart3, Package, Cog, Settings, ShoppingCart, Search, Download, Plus, Calendar, X, Users, LogOut, MoreHorizontal, Eye, CheckCircle, Menu, AlertTriangle, Wrench } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,7 @@ interface Equipment {
     equipment_name: string;
     equipment_type: string;
     status: string;
+    broken_reason?: string;
     created_at?: string;
     updated_at?: string;
     maintenances?: Maintenance[];
@@ -70,6 +71,12 @@ interface EquipmentProps {
 }
 
 export default function Equipment({ user, equipment = [] }: EquipmentProps) {
+    // Get today's date in YYYY-MM-DD format
+    const getTodayDate = () => {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    };
+
     const [showSuccess, setShowSuccess] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -214,7 +221,10 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
     const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
     const [isViewDetailsModalOpen, setIsViewDetailsModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isBrokenModalOpen, setIsBrokenModalOpen] = useState(false);
     const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
+    const [equipmentToBroken, setEquipmentToBroken] = useState<Equipment | null>(null);
+    const [brokenReason, setBrokenReason] = useState('');
 
     // Enhanced status badge using StatusBadge component
     const getStatusBadge = (status: string) => {
@@ -262,11 +272,26 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
         });
     };
 
-    const markAsBroken = (equipmentId: number) => {
+    const markAsBroken = (equipment: Equipment) => {
+        setEquipmentToBroken(equipment);
+        setIsBrokenModalOpen(true);
+    };
+
+    const handleMarkAsBroken = () => {
+        if (!equipmentToBroken || !brokenReason.trim()) {
+            alert('Please provide a reason for marking as broken');
+            return;
+        }
+
         // Mark equipment as broken using Inertia router
-        router.post(`/admin/equipment/${equipmentId}/mark-broken`, {}, {
+        router.post(`/admin/equipment/${equipmentToBroken.id}/mark-broken`, {
+            reason: brokenReason
+        }, {
             onSuccess: () => {
                 console.log('Equipment marked as broken successfully');
+                setIsBrokenModalOpen(false);
+                setBrokenReason('');
+                setEquipmentToBroken(null);
             },
             onError: (errors) => {
                 console.error('Error marking equipment as broken:', errors);
@@ -579,6 +604,54 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                         </div>
                     </div>
 
+                    {/* Statistics Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
+                        {/* Operational Equipment Card */}
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm border">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-base md:text-lg font-semibold text-gray-700 mb-1">Operational</h3>
+                                    <p className="text-2xl md:text-3xl font-bold text-gray-900">
+                                        {equipment.filter(item => item.status === 'operational').length}
+                                    </p>
+                                </div>
+                                <div className="w-10 md:w-12 h-10 md:h-12 bg-green-100 rounded-full flex items-center justify-center">
+                                    <CheckCircle className="w-5 md:w-6 h-5 md:h-6 text-green-600" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Under Maintenance Equipment Card */}
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm border">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-base md:text-lg font-semibold text-gray-700 mb-1">Under Maintenance</h3>
+                                    <p className="text-2xl md:text-3xl font-bold text-gray-900">
+                                        {equipment.filter(item => item.status === 'under_maintenance').length}
+                                    </p>
+                                </div>
+                                <div className="w-10 md:w-12 h-10 md:h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                                    <Wrench className="w-5 md:w-6 h-5 md:h-6 text-yellow-600" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Broken Equipment Card */}
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm border">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-base md:text-lg font-semibold text-gray-700 mb-1">Broken</h3>
+                                    <p className="text-2xl md:text-3xl font-bold text-gray-900">
+                                        {equipment.filter(item => item.status === 'broken').length}
+                                    </p>
+                                </div>
+                                <div className="w-10 md:w-12 h-10 md:h-12 bg-red-100 rounded-full flex items-center justify-center">
+                                    <AlertTriangle className="w-5 md:w-6 h-5 md:h-6 text-red-600" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Content Area */}
                     <div className="bg-white rounded-lg shadow">
                         {/* Equipment Section */}
@@ -673,9 +746,9 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                                                 Mark as Operational
                                                                             </DropdownMenuItem>
                                                                         )}
-                                                                        {(item.status === 'operational' || item.status === 'under_maintenance') && (
+                                                                        {item.status === 'under_maintenance' && (
                                                                             <DropdownMenuItem 
-                                                                                onClick={() => markAsBroken(item.id)}
+                                                                                onClick={() => markAsBroken(item)}
                                                                                 className="text-red-600"
                                                                             >
                                                                                 <AlertTriangle className="mr-2 h-4 w-4" />
@@ -741,9 +814,9 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                                                 Mark as Operational
                                                                             </DropdownMenuItem>
                                                                         )}
-                                                                        {(item.status === 'operational' || item.status === 'under_maintenance') && (
+                                                                        {item.status === 'under_maintenance' && (
                                                                             <DropdownMenuItem 
-                                                                                onClick={() => markAsBroken(item.id)}
+                                                                                onClick={() => markAsBroken(item)}
                                                                                 className="text-red-600"
                                                                             >
                                                                                 <AlertTriangle className="mr-2 h-4 w-4" />
@@ -1074,58 +1147,44 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
             </div>
 
             {/* Add Equipment Modal */}
-            <Dialog open={isModalOpen} onOpenChange={(open) => !open && setIsModalOpen(false)}>
-                <DialogContent className="sm:max-w-md equipment-modal">
+            <Dialog open={isModalOpen} onOpenChange={(open) => setIsModalOpen(open)}>
+                <DialogContent className="w-full max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Add Equipment</DialogTitle>
+                        <DialogTitle className="text-xl text-gray-900 font-medium">Add Equipment</DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Equipment Name
-                            </label>
-                            <input
+                            <Label htmlFor="equipment_name">Equipment Name</Label>
+                            <Input
+                                id="equipment_name"
                                 type="text"
+                                placeholder="Enter equipment name"
                                 value={data.equipment_name}
                                 onChange={(e) => setData('equipment_name', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Enter equipment name"
-                                style={{ 
-                                    color: '#111827', 
-                                    backgroundColor: 'white',
-                                    fontSize: '0.875rem'
-                                }}
                                 required
                             />
                             {errors.equipment_name && (
-                                <p className="text-red-500 text-sm mt-1">{errors.equipment_name}</p>
+                                <p className="text-sm text-red-600 mt-1">{errors.equipment_name}</p>
                             )}
                         </div>
                         
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Equipment Type
-                            </label>
-                            <input
+                            <Label htmlFor="equipment_type">Equipment Type</Label>
+                            <Input
+                                id="equipment_type"
                                 type="text"
+                                placeholder="Enter equipment type"
                                 value={data.equipment_type}
                                 onChange={(e) => setData('equipment_type', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Enter equipment type"
-                                style={{ 
-                                    color: '#111827', 
-                                    backgroundColor: 'white',
-                                    fontSize: '0.875rem'
-                                }}
                                 required
                             />
                             {errors.equipment_type && (
-                                <p className="text-red-500 text-sm mt-1">{errors.equipment_type}</p>
+                                <p className="text-sm text-red-600 mt-1">{errors.equipment_type}</p>
                             )}
                         </div>
                         
-                        <DialogFooter className="gap-2">
+                        <div className="flex justify-end space-x-2 pt-4">
                             <Button
                                 type="button"
                                 variant="outline"
@@ -1137,11 +1196,16 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                             <Button
                                 type="submit"
                                 disabled={processing}
-                                className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {processing ? 'Adding...' : 'Add Equipment'}
+                                {processing ? 'Adding...' : (
+                                    <>
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        Add Equipment
+                                    </>
+                                )}
                             </Button>
-                        </DialogFooter>
+                        </div>
                     </form>
                 </DialogContent>
             </Dialog>
@@ -1154,153 +1218,153 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                     </DialogHeader>
                     
                     <form onSubmit={handleMaintenanceSubmit} className="space-y-4">
-                        {/* Equipment Selection */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Equipment
-                            </label>
-                            <select
-                                value={maintenanceData.equipment_id}
-                                onChange={(e) => setMaintenanceData('equipment_id', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                style={{ 
-                                    color: '#111827', 
-                                    backgroundColor: 'white',
-                                    fontSize: '0.875rem'
-                                }}
-                                required
-                            >
-                                <option value="" style={{ color: '#111827', backgroundColor: 'white' }}>Select Equipment</option>
-                                {equipment.map((item) => (
-                                    <option key={item.id} value={item.id} style={{ color: '#111827', backgroundColor: 'white' }}>
-                                        {item.equipment_name}
-                                    </option>
-                                ))}
-                            </select>
-                            {maintenanceErrors.equipment_id && (
-                                <p className="text-red-500 text-sm mt-1">{maintenanceErrors.equipment_id}</p>
-                            )}
-                        </div>
-                        
-                        {/* Maintenance Type */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Maintenance Type
-                            </label>
-                            <select
-                                value={maintenanceData.maintenance_type}
-                                onChange={(e) => setMaintenanceData('maintenance_type', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                style={{ 
-                                    color: '#111827', 
-                                    backgroundColor: 'white',
-                                    fontSize: '0.875rem'
-                                }}
-                                required
-                            >
-                                <option value="" style={{ color: '#111827', backgroundColor: 'white' }}>Select Maintenance Type</option>
-                                <option value="preventive" style={{ color: '#111827', backgroundColor: 'white' }}>Preventive</option>
-                                <option value="corrective" style={{ color: '#111827', backgroundColor: 'white' }}>Corrective</option>
-                                <option value="emergency" style={{ color: '#111827', backgroundColor: 'white' }}>Emergency</option>
-                                <option value="routine" style={{ color: '#111827', backgroundColor: 'white' }}>Routine</option>
-                            </select>
-                            {maintenanceErrors.maintenance_type && (
-                                <p className="text-red-500 text-sm mt-1">{maintenanceErrors.maintenance_type}</p>
-                            )}
-                        </div>
-                        
-                        {/* Description */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Description
-                            </label>
-                            <textarea
-                                value={maintenanceData.description}
-                                onChange={(e) => setMaintenanceData('description', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
-                                placeholder="Description of maintenance details and requirements"
-                                style={{ 
-                                    color: '#111827', 
-                                    backgroundColor: 'white',
-                                    fontSize: '0.875rem'
-                                }}
-                                rows={3}
-                            />
-                            {maintenanceErrors.description && (
-                                <p className="text-red-500 text-sm mt-1">{maintenanceErrors.description}</p>
-                            )}
-                        </div>
-                        
-                        {/* Row with Maintenance Date and Cost */}
-                        <div className="grid grid-cols-2 gap-4">
+                            {/* Equipment Selection */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Maintenance Date
+                                    Equipment
                                 </label>
-                                <input
-                                    type="date"
-                                    value={maintenanceData.maintenance_date}
-                                    onChange={(e) => setMaintenanceData('maintenance_date', e.target.value)}
-                                    onClick={(e) => {
-                                        const target = e.target as HTMLInputElement;
-                                        if (target.type === 'date') {
-                                            target.showPicker?.();
-                                        }
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                <select
+                                    value={maintenanceData.equipment_id}
+                                    onChange={(e) => setMaintenanceData('equipment_id', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     style={{ 
                                         color: '#111827', 
                                         backgroundColor: 'white',
                                         fontSize: '0.875rem'
                                     }}
                                     required
-                                />
-                                {maintenanceErrors.maintenance_date && (
-                                    <p className="text-red-500 text-sm mt-1">{maintenanceErrors.maintenance_date}</p>
+                                >
+                                    <option value="" style={{ color: '#111827', backgroundColor: 'white' }}>Select Equipment</option>
+                                    {equipment.filter(item => item.status !== 'under_maintenance').map((item) => (
+                                        <option key={item.id} value={item.id} style={{ color: '#111827', backgroundColor: 'white' }}>
+                                            {item.equipment_name}
+                                        </option>
+                                    ))}
+                                </select>
+                                {maintenanceErrors.equipment_id && (
+                                    <p className="text-red-500 text-sm mt-1">{maintenanceErrors.equipment_id}</p>
                                 )}
                             </div>
                             
+                            {/* Maintenance Type */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Cost
+                                    Maintenance Type
                                 </label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={maintenanceData.cost}
-                                    onChange={(e) => setMaintenanceData('cost', e.target.value)}
+                                <select
+                                    value={maintenanceData.maintenance_type}
+                                    onChange={(e) => setMaintenanceData('maintenance_type', e.target.value)}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="0.00"
                                     style={{ 
                                         color: '#111827', 
                                         backgroundColor: 'white',
                                         fontSize: '0.875rem'
                                     }}
-                                />
-                                {maintenanceErrors.cost && (
-                                    <p className="text-red-500 text-sm mt-1">{maintenanceErrors.cost}</p>
+                                    required
+                                >
+                                    <option value="" style={{ color: '#111827', backgroundColor: 'white' }}>Select Maintenance Type</option>
+                                    <option value="preventive" style={{ color: '#111827', backgroundColor: 'white' }}>Preventive</option>
+                                    <option value="corrective" style={{ color: '#111827', backgroundColor: 'white' }}>Corrective</option>
+                                    <option value="emergency" style={{ color: '#111827', backgroundColor: 'white' }}>Emergency</option>
+                                    <option value="routine" style={{ color: '#111827', backgroundColor: 'white' }}>Routine</option>
+                                </select>
+                                {maintenanceErrors.maintenance_type && (
+                                    <p className="text-red-500 text-sm mt-1">{maintenanceErrors.maintenance_type}</p>
                                 )}
                             </div>
-                        </div>
+                            
+                            {/* Description */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Description
+                                </label>
+                                <textarea
+                                    value={maintenanceData.description}
+                                    onChange={(e) => setMaintenanceData('description', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
+                                    placeholder="Description of maintenance details and requirements"
+                                    style={{ 
+                                        color: '#111827', 
+                                        backgroundColor: 'white',
+                                        fontSize: '0.875rem'
+                                    }}
+                                    rows={3}
+                                />
+                                {maintenanceErrors.description && (
+                                    <p className="text-red-500 text-sm mt-1">{maintenanceErrors.description}</p>
+                                )}
+                            </div>
+                            
+                            {/* Row with Maintenance Date and Cost */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Maintenance Date
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={maintenanceData.maintenance_date}
+                                        onChange={(e) => setMaintenanceData('maintenance_date', e.target.value)}
+                                        onClick={(e) => {
+                                            const target = e.target as HTMLInputElement;
+                                            if (target.type === 'date') {
+                                                target.showPicker?.();
+                                            }
+                                        }}
+                                        min={getTodayDate()}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                        style={{ 
+                                            color: '#111827', 
+                                            backgroundColor: 'white',
+                                            fontSize: '0.875rem'
+                                        }}
+                                        required
+                                    />
+                                    {maintenanceErrors.maintenance_date && (
+                                        <p className="text-red-500 text-sm mt-1">{maintenanceErrors.maintenance_date}</p>
+                                    )}
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Cost
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={maintenanceData.cost}
+                                        onChange={(e) => setMaintenanceData('cost', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="0.00"
+                                        style={{ 
+                                            color: '#111827', 
+                                            backgroundColor: 'white',
+                                            fontSize: '0.875rem'
+                                        }}
+                                    />
+                                    {maintenanceErrors.cost && (
+                                        <p className="text-red-500 text-sm mt-1">{maintenanceErrors.cost}</p>
+                                    )}
+                                </div>
+                            </div>
                         
-                        <DialogFooter className="gap-2">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setIsMaintenanceModalOpen(false)}
-                                disabled={maintenanceProcessing}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                type="submit"
-                                disabled={maintenanceProcessing}
-                                className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center"
-                            >
-                                <Plus className="h-4 w-4 mr-2" />
-                                {maintenanceProcessing ? 'Scheduling...' : 'Schedule Maintenance'}
-                            </Button>
-                        </DialogFooter>
+                        <div className="flex flex-col sm:flex-row justify-end gap-2 sm:space-x-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMaintenanceModalOpen(false)}
+                                    className="px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 w-full sm:w-auto"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={maintenanceProcessing}
+                                    className="px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center w-full sm:w-auto"
+                                >
+                                    <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                                    {maintenanceProcessing ? 'Scheduling...' : 'Schedule Maintenance'}
+                                </button>
+                            </div>
                     </form>
                 </DialogContent>
             </Dialog>
@@ -1351,6 +1415,21 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                     {selectedEquipment.equipment_type}
                                 </div>
                             </div>
+                            
+                            {/* Show broken reason if equipment is broken */}
+                            {selectedEquipment.status === 'broken' && selectedEquipment.broken_reason && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Reason for Broken Status
+                                    </label>
+                                    <div className="text-sm text-gray-900 bg-red-50 border border-red-200 rounded-md p-3">
+                                        <div className="flex items-start gap-2">
+                                            <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                                            <span className="text-red-800">{selectedEquipment.broken_reason}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             
                             {selectedEquipment.created_at && (
                                 <div>
@@ -1429,6 +1508,64 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                 title="Equipment Report"
                 description="Select date range to export equipment maintenance records and status history."
             />
+
+            {/* Mark as Broken Reason Modal */}
+            <Dialog open={isBrokenModalOpen} onOpenChange={(open) => {
+                if (!open) {
+                    setIsBrokenModalOpen(false);
+                    setBrokenReason('');
+                    setEquipmentToBroken(null);
+                }
+            }}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <AlertTriangle className="h-5 w-5 text-red-600" />
+                            Mark Equipment as Broken
+                        </DialogTitle>
+                        <DialogDescription>
+                            {equipmentToBroken && (
+                                <>Please provide a reason for marking "<span className="font-medium">{equipmentToBroken.equipment_name}</span>" as broken.</>
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Reason for marking as broken:
+                            </label>
+                            <textarea
+                                value={brokenReason}
+                                onChange={(e) => setBrokenReason(e.target.value)}
+                                placeholder="Please describe why this equipment is being marked as broken..."
+                                className="w-full p-3 border border-gray-300 rounded-md resize-none"
+                                rows={4}
+                                required
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => {
+                                setIsBrokenModalOpen(false);
+                                setBrokenReason('');
+                                setEquipmentToBroken(null);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="destructive" 
+                            onClick={handleMarkAsBroken}
+                            disabled={!brokenReason.trim()}
+                        >
+                            <AlertTriangle className="mr-2 h-4 w-4" />
+                            Mark as Broken
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Logout Confirmation Dialog */}
             <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>

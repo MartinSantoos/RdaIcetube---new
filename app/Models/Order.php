@@ -22,11 +22,14 @@ class Order extends Model
         'delivery_mode',
         'delivery_rider_id',
         'delivery_photo',
+        'cancellation_reason',
+        'cancelled_at',
     ];
 
     protected $casts = [
         'order_date' => 'date',
         'delivery_date' => 'date',
+        'cancelled_at' => 'datetime',
         'price' => 'decimal:2',
         'total' => 'decimal:2',
     ];

@@ -56,6 +56,38 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
+        .analytics-section {
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+        .analytics-title {
+            color: #2563eb;
+            font-size: 16px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 5px;
+            font-weight: bold;
+        }
+        .trend-box {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        .trend-item {
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .trend-label {
+            font-weight: bold;
+            color: #374151;
+        }
+        .trend-value {
+            color: #2563eb;
+            font-weight: bold;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -134,7 +166,91 @@
         </div>
     </div>
 
+    {{-- Size Analysis Section --}}
+    @if(isset($analyticsData['sizeBreakdown']) && !empty($analyticsData['sizeBreakdown']))
+        <div style="margin-bottom: 30px;">
+            <h2 style="color: #2563eb; font-size: 16px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+                Product Size Analysis
+            </h2>
+            <table style="margin-top: 10px;">
+                <thead>
+                    <tr>
+                        <th>Size</th>
+                        <th>Orders</th>
+                        <th>Revenue</th>
+                        <th>Percentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($analyticsData['sizeBreakdown'] as $size => $data)
+                    <tr>
+                        <td style="font-weight: bold;">{{ ucfirst($size) }}</td>
+                        <td>{{ number_format($data['orders']) }}</td>
+                        <td class="amount">PHP {{ number_format($data['revenue'], 2) }}</td>
+                        <td>{{ number_format($data['percentage'], 1) }}%</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
+
+    {{-- Seasonal Analytics Section --}}
+    @if($includeSeasonalAnalytics && isset($analyticsData['seasonalData']) && !empty($analyticsData['seasonalData']))
+        <div style="margin-bottom: 30px;">
+            <h2 style="color: #2563eb; font-size: 16px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+                Seasonal Analytics
+            </h2>
+            <table style="margin-top: 10px;">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>Orders</th>
+                        <th>Revenue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($analyticsData['seasonalData'] as $month => $data)
+                    <tr>
+                        <td style="font-weight: bold;">{{ $month }}</td>
+                        <td>{{ number_format($data['orders']) }}</td>
+                        <td class="amount">PHP {{ number_format($data['revenue'], 2) }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
+
+    {{-- Trend Analysis Section --}}
+    @if($includeTrends && isset($analyticsData['trends']) && !empty($analyticsData['trends']))
+        <div style="margin-bottom: 30px;">
+            <h2 style="color: #2563eb; font-size: 16px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+                Trend Analysis
+            </h2>
+            <table style="margin-top: 10px;">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($analyticsData['trends'] as $metric => $value)
+                    <tr>
+                        <td style="font-weight: bold;">{{ $metric }}</td>
+                        <td style="color: #2563eb; font-weight: bold;">{{ $value }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
+
     @if($orders->count() > 0)
+        <h2 style="color: #2563eb; font-size: 16px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+            Detailed Orders
+        </h2>
         <table>
             <thead>
                 <tr>

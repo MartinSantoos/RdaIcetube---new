@@ -36,8 +36,8 @@ Route::get('test-update/{id}', function ($id) {
     }
     return response()->json([
         'item' => $inventory,
-        'update_url' => route('inventory.updateStock', $id),
-        'method' => 'PATCH'
+        'note' => 'Stock is now managed automatically through orders',
+        'current_stock' => $inventory->quantity
     ]);
 })->name('test.update');
 
@@ -215,9 +215,9 @@ Route::middleware(['auth'])->group(function () {
     
     Route::post('admin/inventory', [App\Http\Controllers\InventoryController::class, 'store'])
         ->name('inventory.store')->middleware('check.admin');
-        
-    Route::patch('admin/inventory/{inventory_id}/update-stock', [App\Http\Controllers\InventoryController::class, 'updateStock'])
-        ->name('inventory.updateStock')->middleware('check.admin');
+    
+    Route::patch('admin/inventory/{inventory_id}/deduct-stock', [App\Http\Controllers\InventoryController::class, 'deductStock'])
+        ->name('inventory.deduct-stock')->middleware('check.admin');
     
     Route::patch('admin/inventory/{inventory_id}/archive', [App\Http\Controllers\InventoryController::class, 'archive'])
         ->name('inventory.archive')->middleware('check.admin');
@@ -230,6 +230,16 @@ Route::middleware(['auth'])->group(function () {
     
     Route::get('admin/inventory/export', [App\Http\Controllers\InventoryController::class, 'export'])
         ->name('admin.inventory.export')->middleware('check.admin');
+
+    // Job Orders (integrated with inventory)
+    Route::post('admin/inventory/job-orders', [App\Http\Controllers\InventoryController::class, 'storeJobOrder'])
+        ->name('inventory.job-orders.store')->middleware('check.admin');
+        
+    Route::patch('admin/inventory/job-orders/{jobOrderId}/status', [App\Http\Controllers\InventoryController::class, 'updateJobOrderStatus'])
+        ->name('inventory.job-orders.updateStatus')->middleware('check.admin');
+        
+    Route::delete('admin/inventory/job-orders/{jobOrderId}', [App\Http\Controllers\InventoryController::class, 'destroyJobOrder'])
+        ->name('inventory.job-orders.destroy')->middleware('check.admin');
 
     // Admin Equipment 
     Route::get('admin/equipment', [App\Http\Controllers\EquipmentController::class, 'index'])
@@ -364,6 +374,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('employee/orders/{order}/complete-with-photo', [App\Http\Controllers\OrderController::class, 'completeOrderWithPhoto'])
         ->name('employee.orders.complete-with-photo')->middleware('check.employee');
+
+    // Employee Job Orders
+    Route::patch('employee/job-orders/{jobOrderId}/status', [App\Http\Controllers\OrderController::class, 'employeeUpdateJobOrderStatus'])
+        ->name('employee.job-orders.update-status')->middleware('check.employee');
 
     // Employee Settings
     Route::get('employee/settings', [SettingsController::class, 'index'])

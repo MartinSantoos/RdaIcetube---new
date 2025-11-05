@@ -470,6 +470,39 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                         </div>
                     </div>
 
+                    {/* Statistics Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
+                        {/* Active Employees Card */}
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm border">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-base md:text-lg font-semibold text-gray-700 mb-1">Active Employees</h3>
+                                    <p className="text-2xl md:text-3xl font-bold text-gray-900">
+                                        {employees.filter(emp => emp.status === 'active').length}
+                                    </p>
+                                </div>
+                                <div className="w-10 md:w-12 h-10 md:h-12 bg-green-100 rounded-full flex items-center justify-center">
+                                    <CheckCircle className="w-5 md:w-6 h-5 md:h-6 text-green-600" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Inactive Employees Card */}
+                        <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm border">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-base md:text-lg font-semibold text-gray-700 mb-1">Inactive Employees</h3>
+                                    <p className="text-2xl md:text-3xl font-bold text-gray-900">
+                                        {employees.filter(emp => emp.status === 'inactive').length}
+                                    </p>
+                                </div>
+                                <div className="w-10 md:w-12 h-10 md:h-12 bg-red-100 rounded-full flex items-center justify-center">
+                                    <AlertTriangle className="w-5 md:w-6 h-5 md:h-6 text-red-600" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Content Area */}
                     <div className="bg-white rounded-lg shadow">
                         <div className="p-4 md:p-6">
@@ -814,7 +847,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
 
                     {/* Employee Modal */}
                     <Dialog open={isModalOpen} onOpenChange={(open) => !open && resetForm()}>
-                        <DialogContent className="sm:max-w-lg employee-modal">
+                        <DialogContent className="w-full max-w-lg mx-4 sm:mx-auto employee-modal max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
                                 <DialogTitle>
                                     {isEditMode ? 'Update employee information' : 'Add employee account'}
@@ -933,17 +966,22 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                 </select>
                                             </div>
                                         )}
-                                        <div className="flex justify-end space-x-2 pt-4">
-                                            <Button type="button" variant="outline" onClick={resetForm} disabled={processing}>
+                                        <div className="flex flex-col sm:flex-row justify-end gap-2 sm:space-x-2 pt-4">
+                                            <Button type="button" variant="outline" onClick={resetForm} disabled={processing} className="w-full sm:w-auto">
                                                 Cancel
                                             </Button>
                                             {isEditMode && (
-                                                <Button type="button" variant="secondary" onClick={resetEmployeePassword} disabled={processing}>
+                                                <Button type="button" variant="secondary" onClick={resetEmployeePassword} disabled={processing} className="w-full sm:w-auto">
                                                     Reset Password
                                                 </Button>
                                             )}
-                                            <Button type="submit" variant="default" disabled={processing}>
-                                                {processing ? 'Saving...' : (isEditMode ? 'Update Employee' : 'Add Employee')}
+                                            <Button type="submit" variant="default" disabled={processing} className="w-full sm:w-auto">
+                                                {processing ? 'Saving...' : (
+                                                    <>
+                                                        <Plus className="h-4 w-4 mr-2" />
+                                                        {isEditMode ? 'Update Employee' : 'Add Employee'}
+                                                    </>
+                                                )}
                                             </Button>
                                         </div>
                                     </form>

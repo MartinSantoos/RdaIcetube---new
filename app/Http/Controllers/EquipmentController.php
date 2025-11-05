@@ -184,13 +184,21 @@ class EquipmentController extends Controller
     /**
      * Mark equipment as broken
      */
-    public function markAsBroken($id)
+    public function markAsBroken(Request $request, $id)
     {
         $equipment = Equipment::findOrFail($id);
         $previousStatus = $equipment->status;
         
-        // Update equipment status
-        $equipment->update(['status' => 'broken']);
+        // Validate that a reason is provided
+        $request->validate([
+            'reason' => 'required|string|max:1000'
+        ]);
+        
+        // Update equipment status and broken reason
+        $equipment->update([
+            'status' => 'broken',
+            'broken_reason' => $request->reason
+        ]);
         
         // Cancel any ongoing maintenance
         Maintenance::where('equipment_id', $id)
@@ -207,7 +215,8 @@ class EquipmentController extends Controller
                     'equipment_name' => $equipment->equipment_name,
                     'equipment_type' => $equipment->equipment_type,
                     'previous_status' => $previousStatus,
-                    'new_status' => 'broken'
+                    'new_status' => 'broken',
+                    'broken_reason' => $request->reason
                 ],
                 auth()->user()->id
             );
@@ -243,18 +252,34 @@ class EquipmentController extends Controller
      */
     public function export(Request $request)
     {
-        $equipmentQuery = Equipment::with(['maintenances' => function($query) {
-            $query->orderBy('created_at', 'desc');
+        $equipmentQuery = Equipment::with(['maintenances' => function($query) use ($request) {
+            $query->orderBy('maintenance_date', 'desc');
+            
+            // Filter maintenances by maintenance date range if provided
+            if ($request->has('start_date') && $request->has('end_date')) {
+                $startDate = $request->input('start_date');
+                $endDate = $request->input('end_date');
+                
+                // Validate date formats and apply filtering
+                if ($startDate && $endDate) {
+                    $query->whereDate('maintenance_date', '>=', $startDate)
+                          ->whereDate('maintenance_date', '<=', $endDate);
+                }
+            }
         }]);
 
-        // Filter equipment by date range if provided
+        // If date filtering is applied, only include equipment that has maintenance records in the date range
         if ($request->has('start_date') && $request->has('end_date')) {
             $startDate = $request->input('start_date');
             $endDate = $request->input('end_date');
             
-            // Ensure proper date format for filtering
-            $equipmentQuery->whereDate('created_at', '>=', $startDate)
-                          ->whereDate('created_at', '<=', $endDate);
+            // Validate dates and apply filtering
+            if ($startDate && $endDate) {
+                $equipmentQuery->whereHas('maintenances', function($query) use ($startDate, $endDate) {
+                    $query->whereDate('maintenance_date', '>=', $startDate)
+                          ->whereDate('maintenance_date', '<=', $endDate);
+                });
+            }
         }
 
         $equipment = $equipmentQuery->orderBy('created_at', 'desc')->get();

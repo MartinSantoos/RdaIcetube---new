@@ -106,11 +106,6 @@ export default function ProductMonitoring({ user, monitoring: initialMonitoring 
             <div className="text-center mb-8">
                 <div className="flex items-center justify-center mb-4">
                     <h1 className="text-5xl font-bold text-white">RDA Tube Ice Production Monitoring</h1>
-                    {isRefreshing && (
-                        <div className="ml-4 flex items-center text-white/80">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                        </div>
-                    )}
                 </div>
                 <div className="text-white/80 text-xl">
                     <div className="text-lg">{formatDate(currentTime)}</div>
@@ -212,7 +207,7 @@ export default function ProductMonitoring({ user, monitoring: initialMonitoring 
                                         <p className="text-base text-gray-700 mb-2 font-medium">Order Details:</p>
                                         <div className="space-y-2">
                                             {monitoring.orderQueue.onDeliveryOrderInfo.map((order, index) => (
-                                                <div key={order.order_id} className="bg-orange-100 text-orange-800 px-3 py-2 rounded-lg text-sm">
+                                                <div key={order.order_id} className="bg-blue-100 text-blue-800 px-3 py-2 rounded-lg text-sm">
                                                     <span className="font-bold text-base">#{order.order_id}</span>
                                                     <span className="ml-3 text-sm">
                                                         {order.delivery_mode === 'deliver' 

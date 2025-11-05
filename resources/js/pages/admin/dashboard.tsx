@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { BarChart3, Package, Cog, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X, Clock, User } from 'lucide-react';
+import { BarChart3, Package, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X, Clock, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -312,7 +312,7 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
-                                    <Cog className="w-5 h-5" />
+                                    <Settings className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
                                 <Link 
@@ -369,17 +369,18 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                     <p className="text-xs md:text-sm text-gray-500">{getPeriodLabel()}</p>
                                 </div>
                                 <div className="flex items-center space-x-2">
+                                    <div className="relative">
                                         <select
                                             value={selectedPeriod}
                                             onChange={(e) => setSelectedPeriod(e.target.value as 'today' | 'thisMonth' | 'thisYear')}
-                                            className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                                            style={{ color: '#111827', backgroundColor: 'white' }}
+                                            className="appearance-none bg-gray-100 border border-gray-300 rounded-lg px-4 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[120px] md:min-w-[140px]"
                                         >
                                             <option value="today">Today</option>
                                             <option value="thisMonth">This Month</option>
                                             <option value="thisYear">This Year</option>
                                         </select>
-                                        <Filter className="absolute right-1 md:right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
+                                        <Filter className="absolute right-2 md:right-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
+                                    </div>
                                     <div className="bg-blue-100 p-2 md:p-3 rounded-lg">
                                         <ShoppingCart className="w-6 md:w-8 h-6 md:h-8 text-blue-600" />
                                     </div>
@@ -455,19 +456,21 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                     <p className="text-xs md:text-sm text-gray-500">{getEquipmentViewLabel()}</p>
                                 </div>
                                 <div className="flex items-center space-x-2">
-                                    <select
-                                        value={selectedEquipmentView}
-                                        onChange={(e) => setSelectedEquipmentView(e.target.value as 'total' | 'operational' | 'under_maintenance' | 'broken')}
-                                        className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                                        style={{ color: '#111827', backgroundColor: 'white' }}
-                                    >
-                                        <option value="total">Total</option>
-                                        <option value="operational">Active</option>
-                                        <option value="under_maintenance">Maintenance</option>
-                                        <option value="broken">Broken</option>
-                                    </select>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedEquipmentView}
+                                            onChange={(e) => setSelectedEquipmentView(e.target.value as 'total' | 'operational' | 'under_maintenance' | 'broken')}
+                                            className="appearance-none bg-gray-100 border border-gray-300 rounded-lg px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                        >
+                                            <option value="total">Total</option>
+                                            <option value="operational">Active</option>
+                                            <option value="under_maintenance">Maintenance</option>
+                                            <option value="broken">Broken</option>
+                                        </select>
+                                        <Filter className="absolute right-1 md:right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
+                                    </div>
                                     <div className="bg-orange-100 p-2 md:p-3 rounded-lg">
-                                        <Cog className="w-6 md:w-8 h-6 md:h-8 text-orange-600" />
+                                        <Settings className="w-6 md:w-8 h-6 md:h-8 text-orange-600" />
                                     </div>
                                 </div>
                             </div>
@@ -515,8 +518,8 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                     <select
                                         value={selectedSalesPeriod}
                                         onChange={(e) => handleSalesPeriodChange(e.target.value as 'today' | 'week' | 'month' | 'year')}
-                                        className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                                        style={{ color: '#111827', backgroundColor: 'white' }}
+                                        className="px-4 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100 hover:bg-gray-200 cursor-pointer"
+                                        style={{ color: '#111827', backgroundColor: 'gray-100' }}
                                     >
                                         <option value="today">Today</option>
                                         <option value="week">This Week</option>

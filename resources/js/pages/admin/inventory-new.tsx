@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { Package, Plus, AlertTriangle, CheckCircle, X, Search, Download, BarChart3, Cog, Settings, LogOut, Home, ShoppingCart, ClipboardList, Users, Menu, Trash2, Archive, RotateCcw, MoreHorizontal, Edit } from 'lucide-react';
+import { Package, Plus, AlertTriangle, CheckCircle, X, Search, Download, BarChart3, Cog, Settings, LogOut, Home, ShoppingCart, ClipboardList, Users, Menu, Trash2, Archive, RotateCcw, MoreHorizontal, Edit, Clock, Play, Square, Eye } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 
 interface User {
     id: number;
@@ -50,25 +51,61 @@ interface InventoryItem {
     archived_at?: string;
 }
 
+interface JobOrder {
+    job_order_id: number;
+    job_order_number: string;
+    product_name: string;
+    size: string;
+    quantity_to_produce: number;
+    status: string;
+    production_date: string;
+    started_at?: string;
+    completed_at?: string;
+    cancelled_at?: string;
+    created_by: number;
+    assigned_to?: number;
+    notes?: string;
+    cancellation_reason?: string;
+    creator: User;
+    assigned_user?: User;
+    created_at: string;
+}
+
+interface Employee {
+    id: number;
+    name: string;
+}
+
+interface InventoryProduct {
+    product_name: string;
+    sizes: string[];
+}
+
 interface InventoryProps {
     user: User;
     inventory: InventoryItem[];
     archivedInventory?: InventoryItem[];
+    jobOrders: JobOrder[];
+    employees: Employee[];
+    inventoryProducts: InventoryProduct[];
 }
 
-export default function InventoryWorking({ user, inventory = [], archivedInventory = [] }: InventoryProps) {
-    const [showUpdateStockModal, setShowUpdateStockModal] = useState(false);
+export default function InventoryWorking({ user, inventory = [], archivedInventory = [], jobOrders = [], employees = [], inventoryProducts = [] }: InventoryProps) {
     const [showAddInventoryModal, setShowAddInventoryModal] = useState(false);
-    const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-    const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+    const [showCreateJobOrderModal, setShowCreateJobOrderModal] = useState(false);
+    const [showJobOrderDetailsModal, setShowJobOrderDetailsModal] = useState(false);
+    const [showCancelJobOrderModal, setShowCancelJobOrderModal] = useState(false);
+    const [selectedJobOrder, setSelectedJobOrder] = useState<JobOrder | null>(null);
+    const [jobOrderToCancel, setJobOrderToCancel] = useState<JobOrder | null>(null);
+    const [cancellationReason, setCancellationReason] = useState('');
     const [showSuccess, setShowSuccess] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
-    const [currentStock, setCurrentStock] = useState('');
     const [sizeError, setSizeError] = useState('');
     const [customSizeMode, setCustomSizeMode] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [jobOrderSearchTerm, setJobOrderSearchTerm] = useState('');
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const [confirmDialog, setConfirmDialog] = useState<{open: boolean, type: 'restore' | 'delete' | null, item: InventoryItem | null}>({
         open: false,
@@ -79,6 +116,10 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
         open: false,
         item: null
     });
+    const [showStockDeductionModal, setShowStockDeductionModal] = useState(false);
+    const [itemToDeduct, setItemToDeduct] = useState<InventoryItem | null>(null);
+    const [deductionQuantity, setDeductionQuantity] = useState('');
+    const [deductionReason, setDeductionReason] = useState('');
     const isMobile = useIsMobile();
 
     const handleLogout = () => {
@@ -120,10 +161,9 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
         return existingItem ? { exists: true, item: existingItem } : { exists: false, item: null };
     };
 
-    // Check if a product name and size combination already exists
+    // Check if a size already exists in any product
     const getProductSizeCombinationStatus = (productName: string, size: string) => {
         const existingItem = inventory.find(item => 
-            item.product_name.toLowerCase() === productName.toLowerCase() && 
             item.size.toLowerCase() === size.toLowerCase()
         );
         return existingItem ? { exists: true, item: existingItem } : { exists: false, item: null };
@@ -140,19 +180,6 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
     };
 
     const {
-        data: updateData,
-        setData: setUpdateData,
-        patch: updatePatch,
-        processing: updateProcessing,
-        errors: updateErrors,
-        reset: resetUpdate
-    } = useForm({
-        operation: 'Add',
-        quantity: '',
-        price: ''
-    });
-
-    const {
         data: addData,
         setData: setAddData,
         post: addPost,
@@ -162,8 +189,23 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
     } = useForm({
         product_name: '',
         size: '',
-        price: '',
-        quantity: ''
+        price: ''
+    });
+
+    const {
+        data: jobOrderData,
+        setData: setJobOrderData,
+        post: jobOrderPost,
+        processing: jobOrderProcessing,
+        errors: jobOrderErrors,
+        reset: resetJobOrder
+    } = useForm({
+        product_name: '',
+        size: '',
+        quantity_to_produce: '',
+        production_date: '',
+        assigned_to: '',
+        notes: ''
     });
 
     const {
@@ -181,24 +223,11 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
         processing: restoreProcessing
     } = useForm({});
 
-    const handleUpdateStock = (item: InventoryItem) => {
-        setSelectedItem(item);
-        setSelectedItemId(item.inventory_id);
-        setCurrentStock(item.quantity.toString());
-        setUpdateData({
-            operation: 'Add',
-            quantity: '',
-            price: item.price.toString()
-        });
-        setShowUpdateStockModal(true);
-    };
-
     const handleAddInventory = () => {
         setAddData({
             product_name: '',
             size: '',
-            price: '',
-            quantity: ''
+            price: ''
         });
         setSizeError(''); // Clear size error when opening modal
         setShowAddInventoryModal(true);
@@ -243,48 +272,98 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
         });
     };
 
-    const handleUpdateSubmit = (e: React.FormEvent) => {
+    const handleCreateJobOrder = () => {
+        setJobOrderData({
+            product_name: '',
+            size: '',
+            quantity_to_produce: '',
+            production_date: '',
+            assigned_to: '',
+            notes: ''
+        });
+        setShowCreateJobOrderModal(true);
+    };
+
+    const handleJobOrderSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedItem || !selectedItemId) return;
         
-        updatePatch(`/admin/inventory/${selectedItemId}/update-stock`, {
+        jobOrderPost('/admin/inventory/job-orders', {
             onSuccess: () => {
-                setShowUpdateStockModal(false);
-                resetUpdate();
-                setSelectedItem(null);
-                setSelectedItemId(null);
-                
-                // Show success message
-                setSuccessMessage('Stock updated successfully!');
+                setShowCreateJobOrderModal(false);
+                resetJobOrder();
+                setSuccessMessage('Job order created successfully!');
                 setShowSuccess(true);
                 
-               
                 setTimeout(() => {
                     setShowSuccess(false);
                 }, 3000);
-
+                
                 // Force reload
                 setTimeout(() => {
                     window.location.reload();
                 }, 100);
-            },
-            onError: (errors: any) => {
-                console.error('Update failed:', errors);
-                // Show error message if there's a validation error
-                if (errors.quantity) {
-                    // Keep modal open to show error
-                    console.log('Quantity error:', errors.quantity);
-                }
             }
         });
+    };
+
+    const handleJobOrderStatusUpdate = (jobOrderId: number, newStatus: string) => {
+        router.patch(`/admin/inventory/job-orders/${jobOrderId}/status`, {
+            status: newStatus
+        });
+    };
+
+    const handleDeleteJobOrder = (jobOrderId: number) => {
+        if (confirm('Are you sure you want to delete this job order?')) {
+            router.delete(`/admin/inventory/job-orders/${jobOrderId}`);
+        }
+    };
+
+    const handleViewJobOrderDetails = (jobOrder: JobOrder) => {
+        setSelectedJobOrder(jobOrder);
+        setShowJobOrderDetailsModal(true);
+    };
+
+    const handleCancelJobOrder = (jobOrder: JobOrder) => {
+        setJobOrderToCancel(jobOrder);
+        setCancellationReason('');
+        setShowCancelJobOrderModal(true);
+    };
+
+    const handleConfirmCancelJobOrder = () => {
+        if (jobOrderToCancel && cancellationReason.trim()) {
+            router.patch(`/admin/inventory/job-orders/${jobOrderToCancel.job_order_id}/status`, {
+                status: 'cancelled',
+                cancellation_reason: cancellationReason.trim()
+            });
+            setShowCancelJobOrderModal(false);
+            setJobOrderToCancel(null);
+            setCancellationReason('');
+        }
+    };
+
+    const getAvailableSizes = (productName: string) => {
+        const product = inventoryProducts.find(p => p.product_name === productName);
+        return product ? product.sizes : [];
+    };
+
+    const getJobOrderStatusBadge = (status: string) => {
+        switch (status) {
+            case 'pending':
+                return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">● Pending</Badge>;
+            case 'in_progress':
+                return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">● In Progress</Badge>;
+            case 'completed':
+                return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">● Completed</Badge>;
+            case 'cancelled':
+                return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">● Cancelled</Badge>;
+            default:
+                return <Badge variant="outline">{status}</Badge>;
+        }
     };
 
     const handleArchiveInventory = (inventory_id: number) => {
         archiveItem(`/admin/inventory/${inventory_id}/archive`, {
             onSuccess: () => {
-                setShowUpdateStockModal(false);
-                setSelectedItem(null);
-                setSelectedItemId(null);
                 setArchiveDialog({ open: false, item: null });
                 
                 // Show success message
@@ -369,6 +448,55 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
         setArchiveDialog({ open: true, item });
     };
 
+    // Stock deduction handlers
+    const handleDeductStock = (item: InventoryItem) => {
+        setItemToDeduct(item);
+        setDeductionQuantity('');
+        setDeductionReason('');
+        setShowStockDeductionModal(true);
+    };
+
+    const handleConfirmStockDeduction = () => {
+        if (!itemToDeduct || !deductionQuantity || !deductionReason.trim()) {
+            alert('Please fill in all fields.');
+            return;
+        }
+
+        const quantity = parseInt(deductionQuantity);
+        if (isNaN(quantity) || quantity <= 0) {
+            alert('Please enter a valid quantity.');
+            return;
+        }
+
+        if (quantity > itemToDeduct.quantity) {
+            alert(`Cannot deduct ${quantity} items. Only ${itemToDeduct.quantity} items available.`);
+            return;
+        }
+
+        router.patch(`/admin/inventory/${itemToDeduct.inventory_id}/deduct-stock`, {
+            quantity: quantity,
+            reason: deductionReason.trim()
+        }, {
+            onSuccess: () => {
+                setShowStockDeductionModal(false);
+                setItemToDeduct(null);
+                setDeductionQuantity('');
+                setDeductionReason('');
+                
+                setSuccessMessage(`Successfully deducted ${quantity} units from ${itemToDeduct.product_name} (${itemToDeduct.size})`);
+                setShowSuccess(true);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 3000);
+            },
+            onError: (errors: any) => {
+                console.error('Stock deduction failed:', errors);
+                alert('Failed to deduct stock. Please try again.');
+            }
+        });
+    };
+
     const closeArchiveDialog = () => {
         setArchiveDialog({ open: false, item: null });
     };
@@ -393,6 +521,20 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
             item.product_name.toLowerCase().includes(searchLower) ||
             item.size.toLowerCase().includes(searchLower) ||
             item.inventory_id.toString().includes(searchLower)
+        );
+    });
+
+    // Filter job orders based on search term
+    const filteredJobOrders = jobOrders.filter((jobOrder: JobOrder) => {
+        const searchLower = jobOrderSearchTerm.toLowerCase();
+        return (
+            jobOrder.job_order_number.toLowerCase().includes(searchLower) ||
+            jobOrder.product_name.toLowerCase().includes(searchLower) ||
+            jobOrder.size.toLowerCase().includes(searchLower) ||
+            jobOrder.status.toLowerCase().includes(searchLower) ||
+            (jobOrder.assigned_user && 
+                (jobOrder.assigned_user.name?.toLowerCase().includes(searchLower) ||
+                 jobOrder.assigned_user.username?.toLowerCase().includes(searchLower)))
         );
     });
 
@@ -662,18 +804,18 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                         <div className="flex flex-col space-y-4 md:space-y-0 md:flex-row md:items-center justify-between">
                             <div>
                                 <h1 className="text-2xl md:text-3xl font-bold mb-2">Inventory</h1>
-                                <p className="text-blue-100 text-sm md:text-base">Manage and track Inventory</p>
+                                <p className="text-blue-100 text-sm md:text-base">Manage products and track stock levels - Stock automatically updates through job orders</p>
                             </div>
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                                 <Button 
                                     onClick={handleAddInventory}
                                     variant="secondary"
                                     className="bg-white text-blue-600 hover:bg-gray-100 text-sm md:text-base"
-                                    title="Add new inventory item"
+                                    title="Create a new product entry"
                                 >
                                     <Plus className="h-4 w-4 mr-2" />
-                                    <span className="hidden sm:inline">Add Inventory</span>
-                                    <span className="sm:hidden">Add Inventory</span>
+                                    <span className="hidden sm:inline">Add Product</span>
+                                    <span className="sm:hidden">Add Product</span>
                                 </Button>
                                 <Button 
                                     variant="secondary" 
@@ -724,12 +866,18 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                             
                             {/* Tabs */}
                             <Tabs defaultValue="inventory" className="mb-6">
-                                <TabsList className="grid w-fit grid-cols-2 bg-gray-200 p-1 rounded-xl h-12">
+                                <TabsList className="grid w-fit grid-cols-3 bg-gray-200 p-1 rounded-xl h-12">
                                     <TabsTrigger 
                                         value="inventory" 
                                         className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
                                     >
                                         Inventory
+                                    </TabsTrigger>
+                                    <TabsTrigger 
+                                        value="job-orders" 
+                                        className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                    >
+                                        Job Orders
                                     </TabsTrigger>
                                     <TabsTrigger 
                                         value="archives" 
@@ -806,9 +954,12 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                                                 </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end" className="w-48">
-                                                                <DropdownMenuItem onClick={() => handleUpdateStock(item)}>
-                                                                    <Edit className="mr-2 h-4 w-4" />
-                                                                    Update Stock
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => handleDeductStock(item)}
+                                                                    className="text-orange-600"
+                                                                >
+                                                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                                                    Deduct Stock
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuItem 
                                                                     onClick={() => openArchiveDialog(item)}
@@ -851,6 +1002,34 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                                         ) : (
                                                             <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">Out of Stock</Badge>
                                                         )}
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="sm"
+                                                                    className="h-8 w-8 p-0"
+                                                                >
+                                                                    <MoreHorizontal className="h-4 w-4" />
+                                                                    <span className="sr-only">Actions</span>
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" className="w-48">
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => handleDeductStock(item)}
+                                                                    className="text-orange-600"
+                                                                >
+                                                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                                                    Deduct Stock
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => openArchiveDialog(item)}
+                                                                    className="text-red-600"
+                                                                >
+                                                                    <Archive className="mr-2 h-4 w-4" />
+                                                                    Archive Item
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
                                                     </div>
                                                 </div>
                                                 
@@ -872,34 +1051,6 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                                         <div className="font-medium text-gray-900">09/12/25</div>
                                                     </div>
                                                 </div>
-                                                
-                                                <div className="pt-3 border-t border-gray-200 flex justify-end">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm"
-                                                                className="h-8 w-8 p-0"
-                                                            >
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                                <span className="sr-only">Actions</span>
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end" className="w-48">
-                                                            <DropdownMenuItem onClick={() => handleUpdateStock(item)}>
-                                                                <Edit className="mr-2 h-4 w-4" />
-                                                                Update Stock
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem 
-                                                                onClick={() => openArchiveDialog(item)}
-                                                                className="text-red-600"
-                                                            >
-                                                                <Archive className="mr-2 h-4 w-4" />
-                                                                Archive Item
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
                                             </div>
                                         ))
                                     ) : (
@@ -908,6 +1059,139 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                         </div>
                                     )}
                                 </div>
+                                </TabsContent>
+                                
+                                <TabsContent value="job-orders" className="mt-6">
+                                    {/* Job Orders Header */}
+                                    <div className="flex justify-between items-center mb-6">
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-gray-900">Job Orders</h2>
+                                            <p className="text-gray-600">Manage production orders and track stock updates</p>
+                                        </div>
+                                        <Button 
+                                            onClick={handleCreateJobOrder}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg shadow-lg transition duration-200"
+                                        >
+                                            <Plus className="w-4 h-4 mr-2" />
+                                            New Job Order
+                                        </Button>
+                                    </div>
+
+                                    {/* Job Orders Search */}
+                                    <div className="flex items-center space-x-2 mb-6">
+                                        <div className="relative flex-1">
+                                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                            <Input
+                                                type="text"
+                                                placeholder="Search job orders..."
+                                                value={jobOrderSearchTerm}
+                                                onChange={(e) => setJobOrderSearchTerm(e.target.value)}
+                                                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Job Orders Table */}
+                                    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="bg-gray-50">
+                                                    <TableHead className="font-semibold text-gray-700">Job Order #</TableHead>
+                                                    <TableHead className="font-semibold text-gray-700">Product</TableHead>
+                                                    <TableHead className="font-semibold text-gray-700">Size</TableHead>
+                                                    <TableHead className="font-semibold text-gray-700">Quantity</TableHead>
+                                                    <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                                                    <TableHead className="font-semibold text-gray-700">Assigned To</TableHead>
+                                                    <TableHead className="font-semibold text-gray-700">Production Date</TableHead>
+                                                    <TableHead className="font-semibold text-gray-700">Actions</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {filteredJobOrders.length > 0 ? (
+                                                    filteredJobOrders.map((jobOrder) => (
+                                                        <TableRow key={jobOrder.job_order_id} className="hover:bg-gray-50">
+                                                            <TableCell className="font-medium text-blue-600">
+                                                                {jobOrder.job_order_number}
+                                                            </TableCell>
+                                                            <TableCell>{jobOrder.product_name}</TableCell>
+                                                            <TableCell>{jobOrder.size}</TableCell>
+                                                            <TableCell>{jobOrder.quantity_to_produce}</TableCell>
+                                                            <TableCell>
+                                                                {getJobOrderStatusBadge(jobOrder.status)}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {jobOrder.assigned_user ? 
+                                                                    (jobOrder.assigned_user.name || jobOrder.assigned_user.username || 'No Name') 
+                                                                    : 'Unassigned'
+                                                                }
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {new Date(jobOrder.production_date).toLocaleDateString()}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="ghost" size="sm">
+                                                                            <MoreHorizontal className="w-4 h-4" />
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end">
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => handleViewJobOrderDetails(jobOrder)}
+                                                                            className="text-blue-600"
+                                                                        >
+                                                                            <Eye className="w-4 h-4 mr-2" />
+                                                                            View Details
+                                                                        </DropdownMenuItem>
+                                                                        {jobOrder.status === 'pending' && (
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => handleJobOrderStatusUpdate(jobOrder.job_order_id, 'in_progress')}
+                                                                                className="text-blue-600"
+                                                                            >
+                                                                                <Play className="w-4 h-4 mr-2" />
+                                                                                Start Production
+                                                                            </DropdownMenuItem>
+                                                                        )}
+                                                                        {jobOrder.status === 'in_progress' && (
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => handleJobOrderStatusUpdate(jobOrder.job_order_id, 'completed')}
+                                                                                className="text-green-600"
+                                                                            >
+                                                                                <CheckCircle className="w-4 h-4 mr-2" />
+                                                                                Mark Complete
+                                                                            </DropdownMenuItem>
+                                                                        )}
+                                                                        {(jobOrder.status === 'pending' || jobOrder.status === 'in_progress') && (
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => handleCancelJobOrder(jobOrder)}
+                                                                                className="text-red-600"
+                                                                            >
+                                                                                <X className="w-4 h-4 mr-2" />
+                                                                                Cancel
+                                                                            </DropdownMenuItem>
+                                                                        )}
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => handleDeleteJobOrder(jobOrder.job_order_id)}
+                                                                            className="text-red-600"
+                                                                        >
+                                                                            <Trash2 className="w-4 h-4 mr-2" />
+                                                                            Delete
+                                                                        </DropdownMenuItem>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))
+                                                ) : (
+                                                    <TableRow>
+                                                        <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                                                            {jobOrderSearchTerm ? `No job orders found matching "${jobOrderSearchTerm}"` : 'No job orders available'}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
                                 </TabsContent>
                                 
                                 <TabsContent value="archives" className="mt-6">
@@ -1063,7 +1347,10 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
             }}>
                 <DialogContent className="w-full max-w-lg">
                     <DialogHeader>
-                        <DialogTitle className="text-xl text-gray-900 font-medium">Add New Inventory</DialogTitle>
+                        <DialogTitle className="text-xl text-gray-900 font-medium">Add New Product</DialogTitle>
+                        <p className="text-sm text-gray-600 mt-2">
+                            Create a new product entry. Stock levels will be automatically managed through job orders.
+                        </p>
                     </DialogHeader>
 
                         <form onSubmit={handleAddSubmit} className="space-y-4">
@@ -1075,6 +1362,7 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                     placeholder="Product Name"
                                     value={addData.product_name}
                                     onChange={(e) => setAddData('product_name', e.target.value)}
+                                    className={addErrors.product_name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
                                     required
                                 />
                                 {addErrors.product_name && (
@@ -1084,8 +1372,8 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label htmlFor="size" className="block text-sm font-medium text-gray-700 mb-2">Size</label>
-                                    <input
+                                    <Label htmlFor="size">Size</Label>
+                                    <Input
                                         id="size"
                                         type="text"
                                         list="sizeOptions"
@@ -1095,12 +1383,11 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                             setSizeError(''); // Clear error when size changes
                                         }}
                                         placeholder="Enter size or select from existing"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        style={{ 
-                                            color: addData.size ? '#111827' : '#9CA3AF', 
-                                            backgroundColor: 'white',
-                                            fontSize: '0.875rem'
-                                        }}
+                                        className={`${
+                                            addErrors.size || sizeError || (addData.size && getProductSizeCombinationStatus(addData.product_name, addData.size).exists)
+                                                ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
+                                                : ''
+                                        }`}
                                         required
                                     />
                                     <datalist id="sizeOptions">
@@ -1122,6 +1409,11 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                     {addErrors.size && (
                                         <p className="text-sm text-red-600 mt-1">{addErrors.size}</p>
                                     )}
+                                    {addData.size && getProductSizeCombinationStatus(addData.product_name, addData.size).exists && (
+                                        <p className="text-sm text-red-600 mt-1">
+                                            Size "{addData.size}" already exists in inventory. Please choose a different size.
+                                        </p>
+                                    )}
                                 </div>
                                 
                                 <div>
@@ -1132,6 +1424,7 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                         placeholder="Price"
                                         value={addData.price}
                                         onChange={(e) => setAddData('price', e.target.value)}
+                                        className={addErrors.price ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
                                         required
                                         min="0"
                                         step="0.01"
@@ -1140,22 +1433,6 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                         <p className="text-sm text-red-600 mt-1">{addErrors.price}</p>
                                     )}
                                 </div>
-                            </div>
-                            
-                            <div>
-                                <Label htmlFor="quantity">Quantity</Label>
-                                <Input
-                                    id="quantity"
-                                    type="number"
-                                    placeholder="Quantity"
-                                    value={addData.quantity}
-                                    onChange={(e) => setAddData('quantity', e.target.value)}
-                                    required
-                                    min="0"
-                                />
-                                {addErrors.quantity && (
-                                    <p className="text-sm text-red-600 mt-1">{addErrors.quantity}</p>
-                                )}
                             </div>
                             
                             <div className="flex justify-end space-x-2 pt-4">
@@ -1171,112 +1448,16 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                 </Button>
                                 <Button
                                     type="submit"
-                                    disabled={addProcessing || !addData.size || !addData.product_name || getProductSizeCombinationStatus(addData.product_name, addData.size).exists}
+                                    disabled={addProcessing}
                                     className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {addProcessing ? 'Adding...' : (
+                                    {addProcessing ? 'Creating...' : (
                                         <>
                                             <Plus className="w-4 h-4 mr-2" />
-                                            Add Inventory
+                                            Create Product
                                         </>
                                     )}
                                 </Button>
-                            </div>
-                        </form>
-                </DialogContent>
-            </Dialog>
-
-            {/* Update Stock Modal */}
-            <Dialog open={showUpdateStockModal && !!selectedItem} onOpenChange={(open) => {
-                setShowUpdateStockModal(open);
-            }}>
-                <DialogContent className="w-full max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="text-xl text-gray-900 font-medium">
-                            {selectedItem?.product_name} - {selectedItem?.size}
-                        </DialogTitle>
-                    </DialogHeader>
-                        
-                        <form onSubmit={handleUpdateSubmit} className="space-y-4">
-                            <div>
-                                <Label htmlFor="current_stock">Current Stock</Label>
-                                <Input
-                                    id="current_stock"
-                                    type="number"
-                                    value={currentStock}
-                                    readOnly
-                                    className="bg-gray-50"
-                                />
-                            </div>
-                            
-                            {updateData.quantity && (
-                                <div>
-                                    <Label htmlFor="operation" style={{ fontSize: '0.875rem', fontWeight: '500', color: '#374151' }}>Operation</Label>
-                                    <Select
-                                        value={updateData.operation}
-                                        onValueChange={(value) => setUpdateData('operation', value)}
-                                    >
-                                        <SelectTrigger style={{ backgroundColor: 'white', border: '1px solid #d1d5db', color: '#111827' }}>
-                                            <SelectValue placeholder="Select operation" style={{ color: '#111827', opacity: '1' }} />
-                                        </SelectTrigger>
-                                        <SelectContent style={{ backgroundColor: 'white', border: '1px solid #d1d5db', zIndex: 9999 }}>
-                                            <SelectItem value="Add" style={{ color: '#111827', backgroundColor: 'white' }}>Add</SelectItem>
-                                            <SelectItem value="Subtract" style={{ color: '#111827', backgroundColor: 'white' }}>Subtract</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            )}
-                            
-                            <div>
-                                <Label htmlFor="quantity">Quantity</Label>
-                                <Input
-                                    id="quantity"
-                                    type="number"
-                                    value={updateData.quantity}
-                                    onChange={(e) => setUpdateData('quantity', e.target.value)}
-                                    min="1"
-                                    placeholder="Enter quantity to add/subtract"
-                                />
-                                {updateErrors.quantity && (
-                                    <p className="text-sm text-red-600 mt-1">{updateErrors.quantity}</p>
-                                )}
-                            </div>
-                            
-                            <div>
-                                <Label htmlFor="price">Price (₱)</Label>
-                                <Input
-                                    id="price"
-                                    type="number"
-                                    step="0.01"
-                                    value={updateData.price}
-                                    onChange={(e) => setUpdateData('price', e.target.value)}
-                                    required
-                                    min="0"
-                                    placeholder="Enter new price"
-                                />
-                                {updateErrors.price && (
-                                    <p className="text-sm text-red-600 mt-1">{updateErrors.price}</p>
-                                )}
-                            </div>
-                            
-                            <div className="flex flex-col space-y-2 pt-4">
-                                <div className="flex space-x-2">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={() => setShowUpdateStockModal(false)}
-                                        className="flex-1"
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        type="submit"
-                                        disabled={updateProcessing}
-                                        className="flex-1 bg-blue-600 hover:bg-blue-700"
-                                    >
-                                        {updateProcessing ? 'Updating...' : 'Update Stock'}
-                                    </Button>
-                                </div>
                             </div>
                         </form>
                 </DialogContent>
@@ -1402,6 +1583,454 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                         </Button>
                         <Button variant="destructive" onClick={confirmLogout}>
                             Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Create Job Order Modal */}
+            <Dialog open={showCreateJobOrderModal} onOpenChange={setShowCreateJobOrderModal}>
+                <DialogContent className="w-full max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl text-gray-900 font-medium">Create Job Order</DialogTitle>
+                        <DialogDescription>
+                            Create a new production order. Completed job orders will automatically update inventory stock levels.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleJobOrderSubmit} className="space-y-4">
+                        <div>
+                            <Label htmlFor="product_name" className="text-sm font-medium text-gray-700">Product Name</Label>
+                            <Select
+                                value={jobOrderData.product_name}
+                                onValueChange={(value) => setJobOrderData({ ...jobOrderData, product_name: value, size: '' })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a product" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {inventory && inventory.length > 0 ? (
+                                        Array.from(new Set(inventory.map(item => item.product_name))).map((productName) => (
+                                            <SelectItem key={productName} value={productName}>
+                                                {productName}
+                                            </SelectItem>
+                                        ))
+                                    ) : (
+                                        <SelectItem value="" disabled>
+                                            No products available
+                                        </SelectItem>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            {jobOrderErrors.product_name && (
+                                <p className="text-red-500 text-sm mt-1">{jobOrderErrors.product_name}</p>
+                            )}
+                            {(!inventory || inventory.length === 0) && (
+                                <p className="text-yellow-600 text-sm mt-1">
+                                    ⚠️ No products available. Please create inventory items first.
+                                </p>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label htmlFor="size" className="text-sm font-medium text-gray-700">Size</Label>
+                            <Select
+                                value={jobOrderData.size}
+                                onValueChange={(value) => setJobOrderData({ ...jobOrderData, size: value })}
+                                disabled={!jobOrderData.product_name}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder={jobOrderData.product_name ? "Select size" : "Select a product first"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {jobOrderData.product_name && inventory ? 
+                                        Array.from(new Set(
+                                            inventory
+                                                .filter(item => item.product_name === jobOrderData.product_name)
+                                                .map(item => item.size)
+                                        )).map((size) => (
+                                            <SelectItem key={size} value={size}>
+                                                {size.charAt(0).toUpperCase() + size.slice(1)}
+                                            </SelectItem>
+                                        ))
+                                        : null
+                                    }
+                                </SelectContent>
+                            </Select>
+                            {jobOrderErrors.size && (
+                                <p className="text-red-500 text-sm mt-1">{jobOrderErrors.size}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label htmlFor="quantity_to_produce" className="text-sm font-medium text-gray-700">Quantity to Produce</Label>
+                            <Input
+                                id="quantity_to_produce"
+                                type="number"
+                                min="1"
+                                value={jobOrderData.quantity_to_produce}
+                                onChange={(e) => setJobOrderData({ ...jobOrderData, quantity_to_produce: e.target.value })}
+                                className="mt-1"
+                                placeholder="Enter quantity"
+                                required
+                            />
+                            {jobOrderErrors.quantity_to_produce && (
+                                <p className="text-red-500 text-sm mt-1">{jobOrderErrors.quantity_to_produce}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label htmlFor="production_date" className="text-sm font-medium text-gray-700">Production Date</Label>
+                            <Input
+                                id="production_date"
+                                type="date"
+                                value={jobOrderData.production_date}
+                                onChange={(e) => setJobOrderData({ ...jobOrderData, production_date: e.target.value })}
+                                className="mt-1"
+                                required
+                            />
+                            {jobOrderErrors.production_date && (
+                                <p className="text-red-500 text-sm mt-1">{jobOrderErrors.production_date}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label htmlFor="assigned_to" className="text-sm font-medium text-gray-700">Assign To (Optional)</Label>
+                            <Select
+                                value={jobOrderData.assigned_to}
+                                onValueChange={(value) => setJobOrderData({ ...jobOrderData, assigned_to: value })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select employee (auto-assign if empty)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {employees && employees.length > 0 ? (
+                                        employees.map((employee) => (
+                                            <SelectItem key={employee.id} value={employee.id.toString()}>
+                                                {employee.name || 'Unnamed Employee'}
+                                            </SelectItem>
+                                        ))
+                                    ) : (
+                                        <SelectItem value="" disabled>No employees available</SelectItem>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-gray-500 mt-1">
+                                If no employee is selected, the system will automatically assign an available employee with no pending job orders.
+                            </p>
+                            {jobOrderErrors.assigned_to && (
+                                <p className="text-red-500 text-sm mt-1">{jobOrderErrors.assigned_to}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label htmlFor="notes" className="text-sm font-medium text-gray-700">Notes (Optional)</Label>
+                            <Textarea
+                                id="notes"
+                                value={jobOrderData.notes}
+                                onChange={(e) => setJobOrderData({ ...jobOrderData, notes: e.target.value })}
+                                className="mt-1"
+                                placeholder="Add any notes or special instructions..."
+                                rows={3}
+                            />
+                            {jobOrderErrors.notes && (
+                                <p className="text-red-500 text-sm mt-1">{jobOrderErrors.notes}</p>
+                            )}
+                        </div>
+
+                        <DialogFooter>
+                            <Button 
+                                type="button" 
+                                variant="outline" 
+                                onClick={() => setShowCreateJobOrderModal(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button 
+                                type="submit" 
+                                disabled={jobOrderProcessing}
+                                className="bg-blue-600 hover:bg-blue-700"
+                            >
+                                {jobOrderProcessing ? 'Creating...' : 'Create Job Order'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Job Order Details Modal */}
+            <Dialog open={showJobOrderDetailsModal} onOpenChange={setShowJobOrderDetailsModal}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Job Order Details</DialogTitle>
+                        <DialogDescription>
+                            View complete information for this job order
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {selectedJobOrder && (
+                        <div className="space-y-6">
+                            {/* Basic Information */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Job Order Number</Label>
+                                    <p className="mt-1 text-sm text-gray-900 font-mono bg-gray-50 p-2 rounded">
+                                        {selectedJobOrder.job_order_number}
+                                    </p>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Status</Label>
+                                    <div className="mt-1">
+                                        {getJobOrderStatusBadge(selectedJobOrder.status)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Product Information */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Product Name</Label>
+                                    <p className="mt-1 text-sm text-gray-900">{selectedJobOrder.product_name}</p>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Size</Label>
+                                    <p className="mt-1 text-sm text-gray-900 capitalize">{selectedJobOrder.size}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Quantity to Produce</Label>
+                                    <p className="mt-1 text-sm text-gray-900 font-semibold">
+                                        {selectedJobOrder.quantity_to_produce} units
+                                    </p>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Production Date</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {new Date(selectedJobOrder.production_date).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Assignment Information */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Created By</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {selectedJobOrder.creator.name || selectedJobOrder.creator.username || 'Unknown'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Assigned To</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {selectedJobOrder.assigned_user ? 
+                                            (selectedJobOrder.assigned_user.name || selectedJobOrder.assigned_user.username || 'No Name') 
+                                            : 'Unassigned'
+                                        }
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Dates */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Created Date</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {new Date(selectedJobOrder.created_at).toLocaleString()}
+                                    </p>
+                                </div>
+                                {selectedJobOrder.started_at && (
+                                    <div>
+                                        <Label className="text-sm font-medium text-gray-700">Started Date</Label>
+                                        <p className="mt-1 text-sm text-gray-900">
+                                            {new Date(selectedJobOrder.started_at).toLocaleString()}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {selectedJobOrder.completed_at && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Completed Date</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {new Date(selectedJobOrder.completed_at).toLocaleString()}
+                                    </p>
+                                </div>
+                            )}
+
+                            {selectedJobOrder.cancelled_at && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Cancelled Date</Label>
+                                    <p className="mt-1 text-sm text-gray-900">
+                                        {new Date(selectedJobOrder.cancelled_at).toLocaleString()}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Notes */}
+                            {selectedJobOrder.notes && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Notes</Label>
+                                    <div className="mt-1 p-3 bg-gray-50 rounded-md border">
+                                        <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                                            {selectedJobOrder.notes}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!selectedJobOrder.notes && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Notes</Label>
+                                    <p className="mt-1 text-sm text-gray-500 italic">No notes provided</p>
+                                </div>
+                            )}
+
+                            {/* Cancellation Reason */}
+                            {selectedJobOrder.cancellation_reason && (
+                                <div>
+                                    <Label className="text-sm font-medium text-gray-700">Cancellation Reason</Label>
+                                    <div className="mt-1 p-3 bg-red-50 rounded-md border border-red-200">
+                                        <p className="text-sm text-red-900 whitespace-pre-wrap">
+                                            {selectedJobOrder.cancellation_reason}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => setShowJobOrderDetailsModal(false)}
+                        >
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Cancel Job Order Modal */}
+            <Dialog open={showCancelJobOrderModal} onOpenChange={setShowCancelJobOrderModal}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Cancel Job Order</DialogTitle>
+                        <DialogDescription>
+                            Please provide a reason for cancelling this job order.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {jobOrderToCancel && (
+                        <div className="space-y-4">
+                            <div className="p-3 bg-gray-50 rounded-md">
+                                <p className="text-sm font-medium text-gray-900">
+                                    {jobOrderToCancel.job_order_number}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                    {jobOrderToCancel.product_name} ({jobOrderToCancel.size}) - {jobOrderToCancel.quantity_to_produce} units
+                                </p>
+                            </div>
+
+                            <div>
+                                <Label htmlFor="cancellation_reason" className="text-sm font-medium text-gray-700">
+                                    Reason for Cancellation <span className="text-red-500">*</span>
+                                </Label>
+                                <Textarea
+                                    id="cancellation_reason"
+                                    value={cancellationReason}
+                                    onChange={(e) => setCancellationReason(e.target.value)}
+                                    placeholder="Enter the reason for cancelling this job order..."
+                                    className="mt-1"
+                                    rows={3}
+                                    required
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => {
+                                setShowCancelJobOrderModal(false);
+                                setJobOrderToCancel(null);
+                                setCancellationReason('');
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            type="button"
+                            variant="destructive"
+                            onClick={handleConfirmCancelJobOrder}
+                            disabled={!cancellationReason.trim()}
+                        >
+                            Cancel Job Order
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Stock Deduction Modal */}
+            <Dialog open={showStockDeductionModal} onOpenChange={setShowStockDeductionModal}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="text-orange-600">Deduct Stock</DialogTitle>
+                        <DialogDescription>
+                            Reduce inventory for {itemToDeduct?.product_name} ({itemToDeduct?.size})
+                            <br />
+                            Current stock: <span className="font-medium">{itemToDeduct?.quantity} units</span>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <Label htmlFor="deduction-quantity">Quantity to Deduct *</Label>
+                            <Input
+                                id="deduction-quantity"
+                                type="number"
+                                placeholder="Enter quantity to deduct"
+                                value={deductionQuantity}
+                                onChange={(e) => setDeductionQuantity(e.target.value)}
+                                min="1"
+                                max={itemToDeduct?.quantity || 0}
+                                className="mt-1"
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="deduction-reason">Reason for Deduction *</Label>
+                            <Textarea
+                                id="deduction-reason"
+                                placeholder="e.g., Ice melted, Product damaged, Expired..."
+                                value={deductionReason}
+                                onChange={(e) => setDeductionReason(e.target.value)}
+                                className="mt-1"
+                                rows={3}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => {
+                                setShowStockDeductionModal(false);
+                                setItemToDeduct(null);
+                                setDeductionQuantity('');
+                                setDeductionReason('');
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="destructive"
+                            onClick={handleConfirmStockDeduction}
+                            disabled={!deductionQuantity || !deductionReason.trim()}
+                        >
+                            <AlertTriangle className="h-4 w-4 mr-2" />
+                            Deduct Stock
                         </Button>
                     </DialogFooter>
                 </DialogContent>

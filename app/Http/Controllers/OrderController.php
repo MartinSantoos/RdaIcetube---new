@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\Inventory;
 use App\Models\ActivityLog;
+use App\Models\JobOrder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -16,7 +17,7 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         // Get available sizes from inventory
-        $availableSizes = \App\Models\Inventory::pluck('size')->unique()->toArray();
+        $availableSizes = \App\Models\Inventory::whereNull('archived_at')->pluck('size')->unique()->toArray();
         
         $request->validate([
             'customer_name' => 'required|string|max:255',
@@ -33,6 +34,7 @@ class OrderController extends Controller
         // Get price from inventory and check availability
         $inventory = Inventory::where('size', $request->size)
             ->where('status', 'available')
+            ->whereNull('archived_at')
             ->first();
             
         if (!$inventory) {
@@ -90,6 +92,7 @@ class OrderController extends Controller
     {
         $request->validate([
             'status' => 'required|string|in:pending,out_for_delivery,completed,cancelled',
+            'cancellation_reason' => 'required_if:status,cancelled|nullable|string|max:500'
         ]);
 
         $order = Order::where('order_id', $order_id)->firstOrFail();
@@ -105,21 +108,35 @@ class OrderController extends Controller
                 $this->deductInventoryForOrder($order);
             }
             
-            $order->update([
-                'status' => $request->status,
-            ]);
+            $updates = ['status' => $request->status];
+            
+            // Add cancellation data if order is being cancelled
+            if ($request->status === 'cancelled') {
+                $updates['cancelled_at'] = now();
+                $updates['cancellation_reason'] = $request->cancellation_reason;
+            }
+            
+            $order->update($updates);
 
             // Log the activity
             if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+                $activityData = [
+                    'previous_status' => $previousStatus,
+                    'new_status' => $request->status,
+                    'customer_name' => $order->customer_name
+                ];
+
+                if ($request->status === 'cancelled') {
+                    $activityData['cancellation_reason'] = $request->cancellation_reason;
+                }
+
                 ActivityLog::log(
                     'order_status_updated',
-                    "Updated order #{$order->order_id} status from '{$previousStatus}' to '{$request->status}'",
+                    $request->status === 'cancelled' 
+                        ? "Cancelled order #{$order->order_id} for {$order->customer_name}: {$request->cancellation_reason}"
+                        : "Updated order #{$order->order_id} status from '{$previousStatus}' to '{$request->status}'",
                     $order,
-                    [
-                        'previous_status' => $previousStatus,
-                        'new_status' => $request->status,
-                        'customer_name' => $order->customer_name
-                    ],
+                    $activityData,
                     auth()->user()->id
                 );
             }
@@ -309,23 +326,31 @@ class OrderController extends Controller
     {
         $user = auth()->user();
         
-        // Get orders assigned to this employee (delivery rider) - exclude archived orders
+        // Get orders assigned to this employee (delivery rider)
         $orders = Order::with('deliveryRider')
             ->where('delivery_rider_id', $user->id)
-            ->where('archived', false) // Only show non-archived orders
+            ->where('archived', false)
             ->orderBy('created_at', 'desc')
             ->get();
 
         // Get inventory for order creation
         $inventory = Inventory::where('status', 'available')
             ->where('quantity', '>', 0)
+            ->whereNull('archived_at')
             ->orderBy('size')
             ->get(['size', 'price', 'quantity', 'status']);
+
+        // Get job orders assigned to this employee
+        $jobOrders = JobOrder::with(['creator', 'assignedUser'])
+            ->where('assigned_to', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
 
         return Inertia::render('employee/orders', [
             'user' => $user,
             'orders' => $orders,
-            'inventory' => $inventory
+            'inventory' => $inventory,
+            'jobOrders' => $jobOrders
         ]);
     }
 
@@ -351,6 +376,7 @@ class OrderController extends Controller
         // Check inventory availability
         $inventory = Inventory::where('size', $request->size)
             ->where('status', 'available')
+            ->whereNull('archived_at')
             ->first();
 
         if (!$inventory) {
@@ -411,17 +437,25 @@ class OrderController extends Controller
     public function employeeUpdateStatus(Request $request, $order_id)
     {
         $request->validate([
-            'status' => 'required|string|in:out_for_delivery,completed',
+            'status' => 'required|string|in:out_for_delivery,completed,cancelled',
             'delivery_photo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120', // 5MB max
+            'cancellation_reason' => 'required_if:status,cancelled|nullable|string|max:1000',
         ]);
 
         $user = auth()->user();
         
-        // Find the order and ensure it's assigned to this employee and not archived
-        $order = Order::where('order_id', $order_id)
-                     ->where('delivery_rider_id', $user->id)
-                     ->where('archived', false) // Prevent updates to archived orders
-                     ->firstOrFail();
+        // For cancellation, allow any employee to cancel (not just assigned one)
+        if ($request->status === 'cancelled') {
+            $order = Order::where('order_id', $order_id)
+                         ->where('archived', false)
+                         ->firstOrFail();
+        } else {
+            // For other status updates, ensure it's assigned to this employee
+            $order = Order::where('order_id', $order_id)
+                         ->where('delivery_rider_id', $user->id)
+                         ->where('archived', false)
+                         ->firstOrFail();
+        }
         
         $previousStatus = $order->status;
         
@@ -441,6 +475,12 @@ class OrderController extends Controller
             $updateData['delivery_photo'] = $deliveryPhotoPath;
         }
         
+        // Handle cancellation data
+        if ($request->status === 'cancelled') {
+            $updateData['cancellation_reason'] = $request->cancellation_reason;
+            $updateData['cancelled_at'] = now();
+        }
+        
         $order->update($updateData);
 
         // Log the activity with more specific messages for delivery actions
@@ -457,22 +497,34 @@ class OrderController extends Controller
                 if ($deliveryPhotoPath) {
                     $actionDescription .= " with delivery photo";
                 }
+            } elseif ($request->status === 'cancelled') {
+                $actionType = 'order_cancelled';
+                $actionDescription = "Cancelled order #{$order->order_id} (Customer: {$order->customer_name}) - Reason: {$request->cancellation_reason}";
             } else {
                 $actionType = 'order_status_updated';
                 $actionDescription = "Updated order #{$order->order_id} status from '{$previousStatus}' to '{$request->status}'";
+            }
+            
+            $logData = [
+                'previous_status' => $previousStatus,
+                'new_status' => $request->status,
+                'customer_name' => $order->customer_name,
+                'delivery_rider' => $user->name,
+            ];
+            
+            if ($deliveryPhotoPath) {
+                $logData['delivery_photo'] = $deliveryPhotoPath;
+            }
+            
+            if ($request->status === 'cancelled') {
+                $logData['cancellation_reason'] = $request->cancellation_reason;
             }
             
             ActivityLog::log(
                 $actionType,
                 $actionDescription,
                 $order,
-                [
-                    'previous_status' => $previousStatus,
-                    'new_status' => $request->status,
-                    'customer_name' => $order->customer_name,
-                    'delivery_rider' => $user->name,
-                    'delivery_photo' => $deliveryPhotoPath
-                ],
+                $logData,
                 auth()->user()->id
             );
         }
@@ -528,5 +580,111 @@ class OrderController extends Controller
         }
 
         return redirect()->back()->with('success', 'Order completed successfully with delivery photo!');
+    }
+
+    /**
+     * Update job order status by employee
+     */
+    public function employeeUpdateJobOrderStatus(Request $request, $jobOrderId)
+    {
+        $user = auth()->user();
+        
+        $request->validate([
+            'status' => 'required|in:pending,in_progress,completed,cancelled',
+            'cancellation_reason' => 'required_if:status,cancelled|nullable|string|max:500'
+        ]);
+
+        $jobOrder = JobOrder::findOrFail($jobOrderId);
+
+        // Verify that this job order is assigned to the current employee
+        if ($jobOrder->assigned_to !== $user->id) {
+            abort(403, 'You can only update job orders assigned to you.');
+        }
+
+        $oldStatus = $jobOrder->status;
+        $updates = ['status' => $request->status];
+
+        // Add timestamps based on status
+        if ($request->status === 'in_progress' && $jobOrder->status === 'pending') {
+            $updates['started_at'] = now();
+        } elseif ($request->status === 'completed' && $jobOrder->status === 'in_progress') {
+            $updates['completed_at'] = now();
+            
+            // Auto-update inventory when job order is completed
+            $this->addStockToInventory($jobOrder);
+        } elseif ($request->status === 'cancelled') {
+            $updates['cancelled_at'] = now();
+            $updates['cancellation_reason'] = $request->cancellation_reason;
+        }
+
+        $jobOrder->update($updates);
+
+        // Log the activity
+        $activityData = [
+            'old_status' => $oldStatus,
+            'new_status' => $request->status,
+            'product_name' => $jobOrder->product_name,
+            'size' => $jobOrder->size,
+            'quantity_produced' => $jobOrder->quantity_to_produce,
+            'updated_by_employee' => $user->name
+        ];
+
+        if ($request->status === 'cancelled') {
+            $activityData['cancellation_reason'] = $request->cancellation_reason;
+        }
+
+        ActivityLog::log(
+            'job_order_status_updated',
+            $request->status === 'cancelled' 
+                ? "Employee {$user->name} cancelled job order {$jobOrder->job_order_number}: {$request->cancellation_reason}"
+                : "Employee {$user->name} updated job order {$jobOrder->job_order_number} status from '{$oldStatus}' to '{$request->status}'",
+            $jobOrder,
+            $activityData,
+            (int) $user->id
+        );
+
+        return redirect()->back()->with('success', 'Job order status updated successfully!');
+    }
+
+    /**
+     * Add stock to inventory when job order is completed
+     */
+    private function addStockToInventory($jobOrder)
+    {
+        $inventory = \App\Models\Inventory::where('product_name', $jobOrder->product_name)
+                                         ->where('size', $jobOrder->size)
+                                         ->whereNull('archived_at')
+                                         ->first();
+
+        if ($inventory) {
+            $oldQuantity = $inventory->quantity;
+            $newQuantity = $oldQuantity + $jobOrder->quantity_to_produce;
+            
+            $inventory->update(['quantity' => $newQuantity]);
+
+            // Update status based on new quantity
+            if ($newQuantity > 10) {
+                $inventory->update(['status' => 'available']);
+            } elseif ($newQuantity > 0) {
+                $inventory->update(['status' => 'critical']);
+            }
+
+            // Log the stock addition
+            ActivityLog::log(
+                'stock_added_from_job_order',
+                "Added {$jobOrder->quantity_to_produce} units to {$inventory->product_name} ({$inventory->size}) from job order {$jobOrder->job_order_number}. Stock: {$oldQuantity} → {$newQuantity}",
+                $inventory,
+                [
+                    'job_order_id' => $jobOrder->job_order_id,
+                    'job_order_number' => $jobOrder->job_order_number,
+                    'product_name' => $inventory->product_name,
+                    'size' => $inventory->size,
+                    'old_quantity' => $oldQuantity,
+                    'new_quantity' => $newQuantity,
+                    'quantity_added' => $jobOrder->quantity_to_produce
+                ],
+                (int) auth()->user()->id
+            );
+        }
     }
 }
