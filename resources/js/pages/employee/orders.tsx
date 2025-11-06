@@ -46,6 +46,7 @@ interface Order {
     cancellation_reason?: string;
     cancelled_at?: string;
     archived?: boolean; // Add archived field for type safety
+    formatted_order_id?: string;
 }
 
 interface InventoryItem {
@@ -75,6 +76,7 @@ interface JobOrder {
     creator: User;
     assigned_user?: User;
     created_at: string;
+    formatted_job_order_id?: string;
 }
 
 interface EmployeeOrdersProps {
@@ -637,6 +639,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
             try {
                 const searchTermLower = jobOrderSearchTerm.toLowerCase();
                 const matchesSearch = jobOrderSearchTerm === '' || 
+                    (jobOrder?.formatted_job_order_id || `JO-${String(jobOrder?.job_order_id).padStart(4, '0')}`).toLowerCase().includes(searchTermLower) ||
                     (jobOrder?.job_order_number || '').toLowerCase().includes(searchTermLower) ||
                     (jobOrder?.product_name || '').toLowerCase().includes(searchTermLower) ||
                     (jobOrder?.size || '').toLowerCase().includes(searchTermLower);
@@ -1215,7 +1218,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                                 filteredJobOrders.map((jobOrder) => (
                                                     <TableRow key={jobOrder.job_order_id} className="hover:bg-gray-50">
                                                         <TableCell className="font-medium text-blue-600">
-                                                            {jobOrder.job_order_number}
+                                                            {jobOrder.formatted_job_order_id || `JO-${String(jobOrder.job_order_id).padStart(4, '0')}`}
                                                         </TableCell>
                                                         <TableCell>{jobOrder.product_name}</TableCell>
                                                         <TableCell>{jobOrder.size}</TableCell>
@@ -2018,7 +2021,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                 <div>
                                     <Label className="text-sm font-medium text-gray-700">Job Order Number</Label>
                                     <p className="mt-1 text-sm text-gray-900 font-mono bg-gray-50 p-2 rounded">
-                                        {selectedJobOrder.job_order_number}
+                                        {selectedJobOrder.formatted_job_order_id || `JO-${String(selectedJobOrder.job_order_id).padStart(4, '0')}`}
                                     </p>
                                 </div>
                                 <div>
@@ -2170,7 +2173,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                         <div className="space-y-4">
                             <div className="p-3 bg-gray-50 rounded-md">
                                 <p className="text-sm font-medium text-gray-900">
-                                    {jobOrderToCancel.job_order_number}
+                                    {jobOrderToCancel.formatted_job_order_id || `JO-${String(jobOrderToCancel.job_order_id).padStart(4, '0')}`}
                                 </p>
                                 <p className="text-sm text-gray-600">
                                     {jobOrderToCancel.product_name} ({jobOrderToCancel.size}) - {jobOrderToCancel.quantity_to_produce} units

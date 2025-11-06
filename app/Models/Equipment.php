@@ -19,4 +19,21 @@ class Equipment extends Model
     {
         return $this->hasMany(Maintenance::class);
     }
+
+    /**
+     * Get formatted equipment number
+     */
+    public function getFormattedEquipmentIdAttribute()
+    {
+        return 'EQ-' . str_pad($this->id, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Generate a unique equipment number
+     */
+    public static function generateEquipmentNumber()
+    {
+        $count = self::count() + 1;
+        return 'EQ-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+    }
 }

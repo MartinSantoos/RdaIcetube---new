@@ -49,6 +49,7 @@ interface InventoryItem {
     date_created: string;
     status: string;
     archived_at?: string;
+    formatted_inventory_id?: string;
 }
 
 interface JobOrder {
@@ -69,6 +70,24 @@ interface JobOrder {
     creator: User;
     assigned_user?: User;
     created_at: string;
+    formatted_job_order_id?: string;
+    archived_at?: string;
+}
+
+interface CustomerOrder {
+    order_id: number;
+    customer_name: string;
+    address: string;
+    contact_number: string;
+    status: string;
+    order_date: string;
+    quantity: number;
+    size: string;
+    delivery_mode: string;
+    delivery_date: string;
+    price: number;
+    total: number;
+    archived_at?: string;
 }
 
 interface Employee {
@@ -86,11 +105,13 @@ interface InventoryProps {
     inventory: InventoryItem[];
     archivedInventory?: InventoryItem[];
     jobOrders: JobOrder[];
+    archivedJobOrders?: JobOrder[];
+    customerOrders: CustomerOrder[];
     employees: Employee[];
     inventoryProducts: InventoryProduct[];
 }
 
-export default function InventoryWorking({ user, inventory = [], archivedInventory = [], jobOrders = [], employees = [], inventoryProducts = [] }: InventoryProps) {
+export default function InventoryWorking({ user, inventory = [], archivedInventory = [], jobOrders = [], archivedJobOrders = [], customerOrders = [], employees = [], inventoryProducts = [] }: InventoryProps) {
     const [showAddInventoryModal, setShowAddInventoryModal] = useState(false);
     const [showCreateJobOrderModal, setShowCreateJobOrderModal] = useState(false);
     const [showJobOrderDetailsModal, setShowJobOrderDetailsModal] = useState(false);
@@ -115,6 +136,21 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
     const [archiveDialog, setArchiveDialog] = useState<{open: boolean, item: InventoryItem | null}>({
         open: false,
         item: null
+    });
+    const [jobOrderArchiveDialog, setJobOrderArchiveDialog] = useState<{open: boolean, jobOrder: JobOrder | null}>({
+        open: false,
+        jobOrder: null
+    });
+    const [jobOrderArchiveProcessing, setJobOrderArchiveProcessing] = useState(false);
+    const [jobOrderConfirmDialog, setJobOrderConfirmDialog] = useState<{open: boolean, type: 'restore' | 'delete' | null, jobOrder: JobOrder | null}>({
+        open: false,
+        type: null,
+        jobOrder: null
+    });
+    const [pendingOrdersWarning, setPendingOrdersWarning] = useState<{open: boolean, item: InventoryItem | null, pendingCount: number}>({
+        open: false,
+        item: null,
+        pendingCount: 0
     });
     const [showStockDeductionModal, setShowStockDeductionModal] = useState(false);
     const [itemToDeduct, setItemToDeduct] = useState<InventoryItem | null>(null);
@@ -318,6 +354,49 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
         }
     };
 
+    // Archive job order functions
+    const openJobOrderArchiveDialog = (jobOrder: JobOrder) => {
+        setJobOrderArchiveDialog({ open: true, jobOrder });
+    };
+
+    const closeJobOrderArchiveDialog = () => {
+        setJobOrderArchiveDialog({ open: false, jobOrder: null });
+    };
+
+    const handleArchiveJobOrder = (jobOrderId: number) => {
+        setJobOrderArchiveProcessing(true);
+        
+        // Frontend-only solution: Make an actual API call to archive the job order
+        router.patch(`/admin/inventory/job-orders/${jobOrderId}/archive`, {}, {
+            onSuccess: () => {
+                setJobOrderArchiveDialog({ open: false, jobOrder: null });
+                setJobOrderArchiveProcessing(false);
+                
+                setSuccessMessage('Job order archived successfully!');
+                setShowSuccess(true);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 3000);
+            },
+            onError: (errors) => {
+                setJobOrderArchiveProcessing(false);
+                console.error('Archive failed:', errors);
+                
+                // If API fails, show error message
+                setSuccessMessage('Failed to archive job order. Please check if the backend route exists.');
+                setShowSuccess(true);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 4000);
+                
+                // Close the dialog even on error
+                setJobOrderArchiveDialog({ open: false, jobOrder: null });
+            }
+        });
+    };
+
     const handleViewJobOrderDetails = (jobOrder: JobOrder) => {
         setSelectedJobOrder(jobOrder);
         setShowJobOrderDetailsModal(true);
@@ -434,6 +513,44 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
         });
     };
 
+    // Job Order restore/delete handlers
+    const handleRestoreJobOrder = (jobOrderId: number) => {
+        router.patch(`/admin/inventory/job-orders/${jobOrderId}/restore`, {}, {
+            onSuccess: () => {
+                closeJobOrderConfirmDialog();
+                setSuccessMessage('Job order restored successfully!');
+                setShowSuccess(true);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 3000);
+            },
+            onError: (errors: any) => {
+                console.error('Restore failed:', errors);
+                alert('Failed to restore job order. Please try again.');
+            }
+        });
+    };
+
+    const handleDeleteArchivedJobOrder = (jobOrderId: number) => {
+        router.delete(`/admin/inventory/job-orders/${jobOrderId}`, {
+            onSuccess: () => {
+                closeJobOrderConfirmDialog();
+                setSuccessMessage('Job order deleted permanently!');
+                setShowSuccess(true);
+                
+                setTimeout(() => {
+                    setShowSuccess(false);
+                }, 3000);
+            },
+            onError: (errors: any) => {
+                console.error('Delete failed:', errors);
+                closeJobOrderConfirmDialog();
+                alert('Failed to delete job order. Please try again.');
+            }
+        });
+    };
+
     // Open confirmation dialogs
     const openConfirmDialog = (type: 'restore' | 'delete', item: InventoryItem) => {
         setConfirmDialog({ open: true, type, item });
@@ -443,8 +560,43 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
         setConfirmDialog({ open: false, type: null, item: null });
     };
 
+    // Job Order confirmation dialog functions
+    const openJobOrderConfirmDialog = (type: 'restore' | 'delete', jobOrder: JobOrder) => {
+        setJobOrderConfirmDialog({ open: true, type, jobOrder });
+    };
+
+    const closeJobOrderConfirmDialog = () => {
+        setJobOrderConfirmDialog({ open: false, type: null, jobOrder: null });
+    };
+
     // Open archive dialog
     const openArchiveDialog = (item: InventoryItem) => {
+        // Check if there are pending job orders for this product size
+        const pendingJobOrders = jobOrders.filter(order => 
+            order.product_name === item.product_name && 
+            order.size === item.size && 
+            order.status === 'pending'
+        );
+
+        // Check if there are pending customer orders for this product size
+        // Customer orders are for ice tube products, so we check by size and status
+        // Assuming customer orders are for ice tube products
+        const pendingCustomerOrders = customerOrders.filter(order => 
+            order.size === item.size && 
+            order.status === 'pending'
+        );
+
+        const totalPendingOrders = pendingJobOrders.length + pendingCustomerOrders.length;
+
+        if (totalPendingOrders > 0) {
+            setPendingOrdersWarning({ 
+                open: true, 
+                item, 
+                pendingCount: totalPendingOrders 
+            });
+            return;
+        }
+
         setArchiveDialog({ open: true, item });
     };
 
@@ -934,13 +1086,19 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="font-medium">
-                                                        {item.inventory_id}
+                                                        {item.formatted_inventory_id || `INV-${String(item.inventory_id).padStart(4, '0')}`}
                                                     </TableCell>
                                                     <TableCell>{item.product_name}</TableCell>
                                                     <TableCell className="capitalize">{item.size}</TableCell>
                                                     <TableCell>₱{item.price}</TableCell>
                                                     <TableCell className="font-medium">{item.quantity}</TableCell>
-                                                    <TableCell>09/12/25</TableCell>
+                                                    <TableCell>
+                                                        {new Date(item.date_created).toLocaleDateString('en-US', {
+                                                            month: '2-digit',
+                                                            day: '2-digit',
+                                                            year: '2-digit'
+                                                        })}
+                                                    </TableCell>
                                                     <TableCell>
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
@@ -991,7 +1149,9 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                             <div key={item.inventory_id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
-                                                        <div className="font-medium text-sm text-gray-700">Inventory ID #{item.inventory_id}</div>
+                                                        <div className="font-medium text-sm text-gray-700">
+                                                            {item.formatted_inventory_id || `INV-${String(item.inventory_id).padStart(4, '0')}`}
+                                                        </div>
                                                         <div className="font-semibold text-lg text-gray-900">{item.product_name}</div>
                                                     </div>
                                                     <div className="flex items-center space-x-2">
@@ -1048,7 +1208,13 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                                     </div>
                                                     <div>
                                                         <span className="text-gray-700">Date:</span>
-                                                        <div className="font-medium text-gray-900">09/12/25</div>
+                                                        <div className="font-medium text-gray-900">
+                                                            {new Date(item.date_created).toLocaleDateString('en-US', {
+                                                                month: '2-digit',
+                                                                day: '2-digit',
+                                                                year: '2-digit'
+                                                            })}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1111,7 +1277,7 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                                     filteredJobOrders.map((jobOrder) => (
                                                         <TableRow key={jobOrder.job_order_id} className="hover:bg-gray-50">
                                                             <TableCell className="font-medium text-blue-600">
-                                                                {jobOrder.job_order_number}
+                                                                {jobOrder.formatted_job_order_id || `JO-${String(jobOrder.job_order_id).padStart(4, '0')}`}
                                                             </TableCell>
                                                             <TableCell>{jobOrder.product_name}</TableCell>
                                                             <TableCell>{jobOrder.size}</TableCell>
@@ -1170,13 +1336,15 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                                                                 Cancel
                                                                             </DropdownMenuItem>
                                                                         )}
-                                                                        <DropdownMenuItem 
-                                                                            onClick={() => handleDeleteJobOrder(jobOrder.job_order_id)}
-                                                                            className="text-red-600"
-                                                                        >
-                                                                            <Trash2 className="w-4 h-4 mr-2" />
-                                                                            Delete
-                                                                        </DropdownMenuItem>
+                                                                        {jobOrder.status !== 'pending' && (
+                                                                            <DropdownMenuItem 
+                                                                                onClick={() => openJobOrderArchiveDialog(jobOrder)}
+                                                                                className="text-orange-600"
+                                                                            >
+                                                                                <Archive className="w-4 h-4 mr-2" />
+                                                                                Archive
+                                                                            </DropdownMenuItem>
+                                                                        )}
                                                                     </DropdownMenuContent>
                                                                 </DropdownMenu>
                                                             </TableCell>
@@ -1195,142 +1363,317 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                 </TabsContent>
                                 
                                 <TabsContent value="archives" className="mt-6">
-                                    {archivedInventory.length === 0 ? (
-                                        <div className="text-center py-8 text-gray-500">
-                                            No archived inventory items found.
-                                        </div>
-                                    ) : (
-                                        <>
-                                            {/* Desktop Archives Table */}
-                                            <div className="hidden md:block overflow-x-auto">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead className="font-semibold text-xs md:text-sm">ID</TableHead>
-                                                            <TableHead className="font-semibold text-xs md:text-sm">Product</TableHead>
-                                                            <TableHead className="font-semibold text-xs md:text-sm">Size</TableHead>
-                                                            <TableHead className="font-semibold text-xs md:text-sm">Price</TableHead>
-                                                            <TableHead className="font-semibold text-xs md:text-sm">Stock</TableHead>
-                                                            <TableHead className="font-semibold text-xs md:text-sm">Archived At</TableHead>
-                                                            <TableHead className="font-semibold text-xs md:text-sm">Actions</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {archivedInventory.map((item) => (
-                                                            <TableRow key={item.inventory_id} className="hover:bg-gray-50 bg-gray-50">
-                                                                <TableCell className="font-medium">
-                                                                    {item.inventory_id}
-                                                                </TableCell>
-                                                                <TableCell className="text-gray-700">{item.product_name}</TableCell>
-                                                                <TableCell className="capitalize text-gray-700">{item.size}</TableCell>
-                                                                <TableCell className="text-gray-700">₱{item.price}</TableCell>
-                                                                <TableCell className="font-medium text-gray-700">{item.quantity}</TableCell>
-                                                                <TableCell className="text-gray-700">
-                                                                    {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : 'N/A'}
-                                                                </TableCell>
-                                                                <TableCell>
-                                                                    <DropdownMenu>
-                                                                        <DropdownMenuTrigger asChild>
-                                                                            <Button 
-                                                                                variant="ghost" 
-                                                                                size="sm"
-                                                                                className="h-8 w-8 p-0"
-                                                                            >
-                                                                                <MoreHorizontal className="h-4 w-4" />
-                                                                                <span className="sr-only">Actions</span>
-                                                                            </Button>
-                                                                        </DropdownMenuTrigger>
-                                                                        <DropdownMenuContent align="end" className="w-48">
-                                                                            <DropdownMenuItem 
-                                                                                onClick={() => openConfirmDialog('restore', item)}
-                                                                                className="text-green-600"
-                                                                            >
-                                                                                <RotateCcw className="mr-2 h-4 w-4" />
-                                                                                Restore Item
-                                                                            </DropdownMenuItem>
-                                                                            <DropdownMenuItem 
-                                                                                onClick={() => openConfirmDialog('delete', item)}
-                                                                                className="text-red-600"
-                                                                            >
-                                                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                                                Delete Permanently
-                                                                            </DropdownMenuItem>
-                                                                        </DropdownMenuContent>
-                                                                    </DropdownMenu>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h2 className="text-2xl font-bold text-gray-900">Archives</h2>
+                                                <p className="text-gray-600">View and manage archived inventory items and job orders</p>
                                             </div>
-                                            
-                                            {/* Mobile Archive Cards */}
-                                            <div className="md:hidden space-y-4">
-                                                {archivedInventory.map((item) => (
-                                                    <div key={item.inventory_id} className="bg-gray-100 rounded-lg p-4 space-y-3">
-                                                        <div className="flex justify-between items-start">
-                                                            <div>
-                                                                <div className="font-medium text-sm text-gray-600">ID #{item.inventory_id}</div>
-                                                                <div className="font-semibold text-lg text-gray-800">{item.product_name}</div>
-                                                            </div>
-                                                            <div className="flex items-center space-x-2">
-                                                                <Badge variant="secondary" className="bg-gray-200 text-gray-700">Archived</Badge>
-                                                                <DropdownMenu>
-                                                                    <DropdownMenuTrigger asChild>
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="sm"
-                                                                            className="h-8 w-8 p-0"
-                                                                        >
-                                                                            <MoreHorizontal className="h-4 w-4" />
-                                                                            <span className="sr-only">Actions</span>
-                                                                        </Button>
-                                                                    </DropdownMenuTrigger>
-                                                                    <DropdownMenuContent align="end" className="w-48">
-                                                                        <DropdownMenuItem 
-                                                                            onClick={() => openConfirmDialog('restore', item)}
-                                                                            className="text-green-600"
-                                                                        >
-                                                                            <RotateCcw className="mr-2 h-4 w-4" />
-                                                                            Restore Item
-                                                                        </DropdownMenuItem>
-                                                                        <DropdownMenuItem 
-                                                                            onClick={() => openConfirmDialog('delete', item)}
-                                                                            className="text-red-600"
-                                                                        >
-                                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                                            Delete Permanently
-                                                                        </DropdownMenuItem>
-                                                                    </DropdownMenuContent>
-                                                                </DropdownMenu>
-                                                            </div>
+                                        </div>
+
+                                        {/* Archive Sub-tabs */}
+                                        <Tabs defaultValue="inventory-archives" className="w-full">
+                                            <TabsList className="grid w-fit grid-cols-2 bg-gray-200 p-1 rounded-xl h-12">
+                                                <TabsTrigger 
+                                                    value="inventory-archives" 
+                                                    className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                                >
+                                                    Inventory Items ({archivedInventory.length})
+                                                </TabsTrigger>
+                                                <TabsTrigger 
+                                                    value="job-order-archives" 
+                                                    className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-gray-600 px-4 py-2 rounded-md font-medium"
+                                                >
+                                                    Job Orders ({archivedJobOrders.length})
+                                                </TabsTrigger>
+                                            </TabsList>
+
+                                            <TabsContent value="inventory-archives" className="mt-6">
+                                                {archivedInventory.length === 0 ? (
+                                                    <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
+                                                        <Archive className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                                                        <h3 className="text-lg font-medium text-gray-900 mb-2">No Archived Items</h3>
+                                                        <p>No inventory items have been archived yet.</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                                                        {/* Desktop Table */}
+                                                        <div className="hidden md:block overflow-x-auto">
+                                                            <Table>
+                                                                <TableHeader>
+                                                                    <TableRow className="bg-gray-50">
+                                                                        <TableHead className="font-semibold text-gray-700">ID</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Product</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Size</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Price</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Stock</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Archived</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Actions</TableHead>
+                                                                    </TableRow>
+                                                                </TableHeader>
+                                                                <TableBody>
+                                                                    {archivedInventory.map((item) => (
+                                                                        <TableRow key={item.inventory_id} className="hover:bg-gray-50">
+                                                                            <TableCell className="font-medium">
+                                                                                {item.formatted_inventory_id || `INV-${String(item.inventory_id).padStart(4, '0')}`}
+                                                                            </TableCell>
+                                                                            <TableCell className="text-gray-700">{item.product_name}</TableCell>
+                                                                            <TableCell className="capitalize text-gray-700">{item.size}</TableCell>
+                                                                            <TableCell className="text-gray-700">₱{item.price}</TableCell>
+                                                                            <TableCell className="font-medium text-gray-700">{item.quantity}</TableCell>
+                                                                            <TableCell className="text-gray-700">
+                                                                                {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : 'N/A'}
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <DropdownMenu>
+                                                                                    <DropdownMenuTrigger asChild>
+                                                                                        <Button 
+                                                                                            variant="ghost" 
+                                                                                            size="sm"
+                                                                                            className="h-8 w-8 p-0"
+                                                                                        >
+                                                                                            <MoreHorizontal className="h-4 w-4" />
+                                                                                            <span className="sr-only">Actions</span>
+                                                                                        </Button>
+                                                                                    </DropdownMenuTrigger>
+                                                                                    <DropdownMenuContent align="end" className="w-48">
+                                                                                        <DropdownMenuItem 
+                                                                                            onClick={() => openConfirmDialog('restore', item)}
+                                                                                            className="text-green-600"
+                                                                                        >
+                                                                                            <RotateCcw className="mr-2 h-4 w-4" />
+                                                                                            Restore Item
+                                                                                        </DropdownMenuItem>
+                                                                                        <DropdownMenuItem 
+                                                                                            onClick={() => openConfirmDialog('delete', item)}
+                                                                                            className="text-red-600"
+                                                                                        >
+                                                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                                                            Delete Permanently
+                                                                                        </DropdownMenuItem>
+                                                                                    </DropdownMenuContent>
+                                                                                </DropdownMenu>
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
                                                         </div>
-                                                        
-                                                        <div className="grid grid-cols-2 gap-3 text-sm">
-                                                            <div>
-                                                                <span className="text-gray-600">Size:</span>
-                                                                <div className="font-medium capitalize text-gray-800">{item.size}</div>
-                                                            </div>
-                                                            <div>
-                                                                <span className="text-gray-600">Price:</span>
-                                                                <div className="font-medium text-gray-800">₱{item.price}</div>
-                                                            </div>
-                                                            <div>
-                                                                <span className="text-gray-600">Stock:</span>
-                                                                <div className="font-medium text-gray-800">{item.quantity}</div>
-                                                            </div>
-                                                            <div>
-                                                                <span className="text-gray-600">Archived:</span>
-                                                                <div className="font-medium text-gray-800">
-                                                                    {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : 'N/A'}
+
+                                                        {/* Mobile Cards */}
+                                                        <div className="md:hidden p-4 space-y-4">
+                                                            {archivedInventory.map((item) => (
+                                                                <div key={item.inventory_id} className="bg-gray-50 rounded-lg p-4 space-y-3">
+                                                                    <div className="flex justify-between items-start">
+                                                                        <div>
+                                                                            <div className="font-medium text-sm text-gray-600">
+                                                                                {item.formatted_inventory_id || `INV-${String(item.inventory_id).padStart(4, '0')}`}
+                                                                            </div>
+                                                                            <div className="font-semibold text-lg text-gray-800">{item.product_name}</div>
+                                                                        </div>
+                                                                        <div className="flex items-center space-x-2">
+                                                                            <Badge variant="secondary" className="bg-gray-200 text-gray-700">Archived</Badge>
+                                                                            <DropdownMenu>
+                                                                                <DropdownMenuTrigger asChild>
+                                                                                    <Button 
+                                                                                        variant="ghost" 
+                                                                                        size="sm"
+                                                                                        className="h-8 w-8 p-0"
+                                                                                    >
+                                                                                        <MoreHorizontal className="h-4 w-4" />
+                                                                                        <span className="sr-only">Actions</span>
+                                                                                    </Button>
+                                                                                </DropdownMenuTrigger>
+                                                                                <DropdownMenuContent align="end" className="w-48">
+                                                                                    <DropdownMenuItem 
+                                                                                        onClick={() => openConfirmDialog('restore', item)}
+                                                                                        className="text-green-600"
+                                                                                    >
+                                                                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                                                                        Restore Item
+                                                                                    </DropdownMenuItem>
+                                                                                    <DropdownMenuItem 
+                                                                                        onClick={() => openConfirmDialog('delete', item)}
+                                                                                        className="text-red-600"
+                                                                                    >
+                                                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                                                        Delete Permanently
+                                                                                    </DropdownMenuItem>
+                                                                                </DropdownMenuContent>
+                                                                            </DropdownMenu>
+                                                                        </div>
+                                                                    </div>
+                                                                    
+                                                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                                                        <div>
+                                                                            <span className="text-gray-600">Size:</span>
+                                                                            <div className="font-medium capitalize text-gray-800">{item.size}</div>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-gray-600">Price:</span>
+                                                                            <div className="font-medium text-gray-800">₱{item.price}</div>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-gray-600">Stock:</span>
+                                                                            <div className="font-medium text-gray-800">{item.quantity}</div>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-gray-600">Archived:</span>
+                                                                            <div className="font-medium text-gray-800">
+                                                                                {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : 'N/A'}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
+                                                            ))}
                                                         </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
+                                                )}
+                                            </TabsContent>
+
+                                            <TabsContent value="job-order-archives" className="mt-6">
+                                                {archivedJobOrders.length === 0 ? (
+                                                    <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
+                                                        <Archive className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                                                        <h3 className="text-lg font-medium text-gray-900 mb-2">No Archived Job Orders</h3>
+                                                        <p>No job orders have been archived yet.</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                                                        {/* Desktop Table */}
+                                                        <div className="hidden md:block overflow-x-auto">
+                                                            <Table>
+                                                                <TableHeader>
+                                                                    <TableRow className="bg-gray-50">
+                                                                        <TableHead className="font-semibold text-gray-700">Job Order #</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Product</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Size</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Quantity</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Archived At</TableHead>
+                                                                        <TableHead className="font-semibold text-gray-700">Actions</TableHead>
+                                                                    </TableRow>
+                                                                </TableHeader>
+                                                                <TableBody>
+                                                                    {archivedJobOrders.map((jobOrder) => (
+                                                                        <TableRow key={jobOrder.job_order_id} className="hover:bg-gray-50">
+                                                                            <TableCell className="font-medium text-blue-600">
+                                                                                {jobOrder.formatted_job_order_id || `JO-${String(jobOrder.job_order_id).padStart(4, '0')}`}
+                                                                            </TableCell>
+                                                                            <TableCell className="text-gray-700">{jobOrder.product_name}</TableCell>
+                                                                            <TableCell className="text-gray-700">{jobOrder.size}</TableCell>
+                                                                            <TableCell className="text-gray-700">{jobOrder.quantity_to_produce}</TableCell>
+                                                                            <TableCell>
+                                                                                {getJobOrderStatusBadge(jobOrder.status)}
+                                                                            </TableCell>
+                                                                            <TableCell className="text-gray-700">
+                                                                                {jobOrder.archived_at ? new Date(jobOrder.archived_at).toLocaleDateString() : 'N/A'}
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <DropdownMenu>
+                                                                                    <DropdownMenuTrigger asChild>
+                                                                                        <Button 
+                                                                                            variant="ghost" 
+                                                                                            size="sm"
+                                                                                            className="h-8 w-8 p-0"
+                                                                                        >
+                                                                                            <MoreHorizontal className="h-4 w-4" />
+                                                                                            <span className="sr-only">Actions</span>
+                                                                                        </Button>
+                                                                                    </DropdownMenuTrigger>
+                                                                                    <DropdownMenuContent align="end" className="w-48">
+                                                                                        <DropdownMenuItem 
+                                                                                            onClick={() => openJobOrderConfirmDialog('restore', jobOrder)}
+                                                                                            className="text-green-600"
+                                                                                        >
+                                                                                            <RotateCcw className="mr-2 h-4 w-4" />
+                                                                                            Restore Job Order
+                                                                                        </DropdownMenuItem>
+                                                                                        <DropdownMenuItem 
+                                                                                            onClick={() => openJobOrderConfirmDialog('delete', jobOrder)}
+                                                                                            className="text-red-600"
+                                                                                        >
+                                                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                                                            Delete Permanently
+                                                                                        </DropdownMenuItem>
+                                                                                    </DropdownMenuContent>
+                                                                                </DropdownMenu>
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
+                                                        </div>
+
+                                                        {/* Mobile Cards */}
+                                                        <div className="md:hidden p-4 space-y-4">
+                                                            {archivedJobOrders.map((jobOrder) => (
+                                                                <div key={jobOrder.job_order_id} className="bg-gray-50 rounded-lg p-4 space-y-3">
+                                                                    <div className="flex justify-between items-start">
+                                                                        <div>
+                                                                            <div className="font-medium text-sm text-blue-600">
+                                                                                {jobOrder.formatted_job_order_id || `JO-${String(jobOrder.job_order_id).padStart(4, '0')}`}
+                                                                            </div>
+                                                                            <div className="font-semibold text-lg text-gray-800">{jobOrder.product_name}</div>
+                                                                        </div>
+                                                                        <div className="flex items-center space-x-2">
+                                                                            {getJobOrderStatusBadge(jobOrder.status)}
+                                                                            <Badge variant="secondary" className="bg-gray-200 text-gray-700">Archived</Badge>
+                                                                            <DropdownMenu>
+                                                                                <DropdownMenuTrigger asChild>
+                                                                                    <Button 
+                                                                                        variant="ghost" 
+                                                                                        size="sm"
+                                                                                        className="h-8 w-8 p-0"
+                                                                                    >
+                                                                                        <MoreHorizontal className="h-4 w-4" />
+                                                                                        <span className="sr-only">Actions</span>
+                                                                                    </Button>
+                                                                                </DropdownMenuTrigger>
+                                                                                <DropdownMenuContent align="end" className="w-48">
+                                                                                    <DropdownMenuItem 
+                                                                                        onClick={() => openJobOrderConfirmDialog('restore', jobOrder)}
+                                                                                        className="text-green-600"
+                                                                                    >
+                                                                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                                                                        Restore Job Order
+                                                                                    </DropdownMenuItem>
+                                                                                    <DropdownMenuItem 
+                                                                                        onClick={() => openJobOrderConfirmDialog('delete', jobOrder)}
+                                                                                        className="text-red-600"
+                                                                                    >
+                                                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                                                        Delete Permanently
+                                                                                    </DropdownMenuItem>
+                                                                                </DropdownMenuContent>
+                                                                            </DropdownMenu>
+                                                                        </div>
+                                                                    </div>
+                                                                    
+                                                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                                                        <div>
+                                                                            <span className="text-gray-600">Size:</span>
+                                                                            <div className="font-medium text-gray-800">{jobOrder.size}</div>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-gray-600">Quantity:</span>
+                                                                            <div className="font-medium text-gray-800">{jobOrder.quantity_to_produce}</div>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-gray-600">Archived:</span>
+                                                                            <div className="font-medium text-gray-800">
+                                                                                {jobOrder.archived_at ? new Date(jobOrder.archived_at).toLocaleDateString() : 'N/A'}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </TabsContent>
+                                        </Tabs>
+                                    </div>
                                 </TabsContent>
                             </Tabs>
                         </div>
@@ -1774,7 +2117,7 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label className="text-sm font-medium text-gray-700">Job Order Number</Label>
-                                    <p className="mt-1 text-sm text-gray-900 font-mono bg-gray-50 p-2 rounded">
+                                    <p className="mt-1 text-sm text-gray-900 font-mono">
                                         {selectedJobOrder.job_order_number}
                                     </p>
                                 </div>
@@ -1975,6 +2318,45 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                 </DialogContent>
             </Dialog>
 
+            {/* Job Order Archive Confirmation Dialog */}
+            <Dialog open={jobOrderArchiveDialog.open} onOpenChange={(open) => !open && closeJobOrderArchiveDialog()}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center">
+                            <AlertTriangle className="h-6 w-6 text-amber-500 mr-3" />
+                            Archive Job Order
+                        </DialogTitle>
+                        <DialogDescription>
+                            {jobOrderArchiveDialog.jobOrder && 
+                                `Are you sure you want to archive job order "${jobOrderArchiveDialog.jobOrder.formatted_job_order_id || `JO-${String(jobOrderArchiveDialog.jobOrder.job_order_id).padStart(4, '0')}`}" for ${jobOrderArchiveDialog.jobOrder.product_name} (${jobOrderArchiveDialog.jobOrder.size})? It will be moved to the archives and can be restored later.`
+                            }
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={closeJobOrderArchiveDialog}
+                            disabled={jobOrderArchiveProcessing}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            type="button" 
+                            className="bg-orange-600 hover:bg-orange-700"
+                            disabled={jobOrderArchiveProcessing}
+                            onClick={() => {
+                                if (jobOrderArchiveDialog.jobOrder) {
+                                    handleArchiveJobOrder(jobOrderArchiveDialog.jobOrder.job_order_id);
+                                }
+                            }}
+                        >
+                            {jobOrderArchiveProcessing ? 'Archiving...' : 'Archive'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Stock Deduction Modal */}
             <Dialog open={showStockDeductionModal} onOpenChange={setShowStockDeductionModal}>
                 <DialogContent className="sm:max-w-[425px]">
@@ -2004,7 +2386,7 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                             <Label htmlFor="deduction-reason">Reason for Deduction *</Label>
                             <Textarea
                                 id="deduction-reason"
-                                placeholder="e.g., Ice melted, Product damaged, Expired..."
+                                placeholder=""
                                 value={deductionReason}
                                 onChange={(e) => setDeductionReason(e.target.value)}
                                 className="mt-1"
@@ -2031,6 +2413,88 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                         >
                             <AlertTriangle className="h-4 w-4 mr-2" />
                             Deduct Stock
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Job Order Confirmation Dialog */}
+            <Dialog open={jobOrderConfirmDialog.open} onOpenChange={(open) => !open && closeJobOrderConfirmDialog()}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center">
+                            <AlertTriangle className="h-6 w-6 text-amber-500 mr-3" />
+                            {jobOrderConfirmDialog.type === 'restore' && 'Restore Job Order'}
+                            {jobOrderConfirmDialog.type === 'delete' && 'Permanently Delete Job Order'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {jobOrderConfirmDialog.type === 'restore' && jobOrderConfirmDialog.jobOrder && 
+                                `Are you sure you want to restore "${jobOrderConfirmDialog.jobOrder.formatted_job_order_id || `JO-${String(jobOrderConfirmDialog.jobOrder.job_order_id).padStart(4, '0')}`}" for ${jobOrderConfirmDialog.jobOrder.product_name} (${jobOrderConfirmDialog.jobOrder.size})? It will be moved back to the active job orders.`
+                            }
+                            {jobOrderConfirmDialog.type === 'delete' && jobOrderConfirmDialog.jobOrder && 
+                                <>
+                                    Are you sure you want to permanently delete "{jobOrderConfirmDialog.jobOrder.formatted_job_order_id || `JO-${String(jobOrderConfirmDialog.jobOrder.job_order_id).padStart(4, '0')}`}" for {jobOrderConfirmDialog.jobOrder.product_name} ({jobOrderConfirmDialog.jobOrder.size})?
+                                    <br />
+                                    <span className="text-red-600 font-medium">⚠️ Warning: This action cannot be undone!</span>
+                                    <br />
+                                    All job order data will be permanently removed from the system.
+                                </>
+                            }
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={closeJobOrderConfirmDialog}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            type="button" 
+                            className={
+                                jobOrderConfirmDialog.type === 'restore' 
+                                    ? "bg-green-600 hover:bg-green-700" 
+                                    : "bg-red-600 hover:bg-red-700"
+                            }
+                            onClick={() => {
+                                if (jobOrderConfirmDialog.type === 'restore' && jobOrderConfirmDialog.jobOrder) {
+                                    handleRestoreJobOrder(jobOrderConfirmDialog.jobOrder.job_order_id);
+                                } else if (jobOrderConfirmDialog.type === 'delete' && jobOrderConfirmDialog.jobOrder) {
+                                    handleDeleteArchivedJobOrder(jobOrderConfirmDialog.jobOrder.job_order_id);
+                                }
+                            }}
+                        >
+                            {jobOrderConfirmDialog.type === 'restore' ? 'Restore' : 'Delete Permanently'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Pending Orders Warning Dialog */}
+            <Dialog open={pendingOrdersWarning.open} onOpenChange={(open) => !open && setPendingOrdersWarning({ open: false, item: null, pendingCount: 0 })}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-amber-600">
+                            <AlertTriangle className="w-5 h-5" />
+                            Cannot Archive Product
+                        </DialogTitle>
+                        <DialogDescription className="space-y-2">
+                            <p>
+                                Cannot archive <strong>{pendingOrdersWarning.item?.product_name} ({pendingOrdersWarning.item?.size})</strong> because there {pendingOrdersWarning.pendingCount === 1 ? 'is' : 'are'} still <strong>{pendingOrdersWarning.pendingCount}</strong> pending {pendingOrdersWarning.pendingCount === 1 ? 'order' : 'orders'} for this product size.
+                            </p>
+                            <p className="text-red-600 font-medium">
+                                Please complete or cancel the pending orders first before archiving this inventory item.
+                            </p>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => setPendingOrdersWarning({ open: false, item: null, pendingCount: 0 })}
+                        >
+                            Understood
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { Search, Download, BarChart3,Cog, Package, Settings, ShoppingCart, MoreHorizontal, Check, X, Archive, Plus, Users, Printer, LogOut, Truck, Eye, RotateCcw, Menu, Calendar, Trash2 } from 'lucide-react';
+import { Search, Download, BarChart3,Cog, Package, Settings, ShoppingCart, MoreHorizontal, Check, X, Archive, Plus, Users, Printer, LogOut, Truck, Eye, RotateCcw, Menu, Calendar, Trash2, AlertTriangle } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,6 +76,7 @@ interface Order {
         name: string;
         position?: string;
     };
+    formatted_order_id?: string;
 }
 
 interface DeliveryRider {
@@ -91,6 +92,7 @@ interface InventoryItem {
     status: string;
     quantity: number;
     archived_at?: string | null; // Add archived field
+    formatted_inventory_id?: string;
 }
 
 interface OrderProps {
@@ -123,6 +125,11 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     const [dateToFilter, setDateToFilter] = useState('');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+    const [pendingOrdersWarning, setPendingOrdersWarning] = useState<{open: boolean, order: Order | null, pendingCount: number}>({
+        open: false,
+        order: null,
+        pendingCount: 0
+    });
     const isMobile = useIsMobile();
     
     // CSS for custom radio button styling
@@ -608,6 +615,22 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
 
     // Archive order function
     const handleArchiveOrder = (order: Order) => {
+        // Check if there are other pending orders for the same size
+        const pendingOrdersForSize = orders.filter(o => 
+            o.order_id !== order.order_id && // Exclude the current order
+            o.size === order.size && 
+            o.status === 'pending'
+        );
+
+        if (pendingOrdersForSize.length > 0) {
+            setPendingOrdersWarning({ 
+                open: true, 
+                order, 
+                pendingCount: pendingOrdersForSize.length 
+            });
+            return;
+        }
+
         router.patch(`/admin/orders/${order.order_id}/archive`, {}, {
             preserveScroll: true,
         });
@@ -674,6 +697,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
         const matchesSearch = searchTerm === '' || 
             order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             order.order_id.toString().includes(searchTerm) ||
+            (order.formatted_order_id || `OR-${String(order.order_id).padStart(4, '0')}`).toLowerCase().includes(searchTerm.toLowerCase()) ||
             order.contact_number.includes(searchTerm) ||
             order.address.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -709,6 +733,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
         const matchesSearch = searchTerm === '' || 
             order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             order.order_id.toString().includes(searchTerm) ||
+            (order.formatted_order_id || `OR-${String(order.order_id).padStart(4, '0')}`).toLowerCase().includes(searchTerm.toLowerCase()) ||
             order.contact_number.includes(searchTerm) ||
             order.address.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -1111,7 +1136,9 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                         <TableCell className="p-2">
                                                             {getStatusBadge(order.status)}
                                                         </TableCell>
-                                                        <TableCell className="font-medium text-sm p-2">{order.order_id}</TableCell>
+                                                        <TableCell className="font-medium text-sm p-2">
+                                                            {order.formatted_order_id || `OR-${String(order.order_id).padStart(4, '0')}`}
+                                                        </TableCell>
                                                         <TableCell className="break-words text-sm leading-tight p-2" title={order.customer_name}>
                                                             {order.customer_name}
                                                         </TableCell>
@@ -1226,7 +1253,9 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                             <div key={order.order_id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
-                                                        <div className="font-medium text-sm text-gray-800">Order #{order.order_id}</div>
+                                                        <div className="font-medium text-sm text-gray-800">
+                                                            Order #{order.formatted_order_id || `OR-${String(order.order_id).padStart(4, '0')}`}
+                                                        </div>
                                                         <div className="font-semibold text-lg text-gray-900">{order.customer_name}</div>
                                                     </div>
                                                     <div className="flex items-center space-x-2">
@@ -1531,7 +1560,9 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                 <TableCell className="p-2">
                                                                     {getStatusBadge(order.status)}
                                                                 </TableCell>
-                                                                <TableCell className="font-medium text-gray-600 text-sm p-2">{order.order_id}</TableCell>
+                                                                <TableCell className="font-medium text-gray-600 text-sm p-2">
+                                                                    {order.formatted_order_id || `OR-${String(order.order_id).padStart(4, '0')}`}
+                                                                </TableCell>
                                                                 <TableCell className="break-words text-sm leading-tight text-gray-600 p-2" title={order.customer_name}>
                                                                     {order.customer_name}
                                                                 </TableCell>
@@ -2428,6 +2459,38 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                         </Button>
                         <Button variant="destructive" onClick={confirmLogout}>
                             Yes, Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Pending Orders Warning Dialog */}
+            <Dialog open={pendingOrdersWarning.open} onOpenChange={(open) => !open && setPendingOrdersWarning({ open: false, order: null, pendingCount: 0 })}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-amber-600">
+                            <AlertTriangle className="w-5 h-5" />
+                            Cannot Archive Order
+                        </DialogTitle>
+                        <DialogDescription className="space-y-2">
+                            <p>
+                                Cannot archive order <strong>{pendingOrdersWarning.order?.formatted_order_id || `OR-${String(pendingOrdersWarning.order?.order_id).padStart(4, '0')}`}</strong> for <strong>{pendingOrdersWarning.order?.size}</strong> size because there {pendingOrdersWarning.pendingCount === 1 ? 'is' : 'are'} still <strong>{pendingOrdersWarning.pendingCount}</strong> other pending {pendingOrdersWarning.pendingCount === 1 ? 'order' : 'orders'} for the same size.
+                            </p>
+                            <p className="text-red-600 font-medium">
+                                Please complete or cancel the other pending orders for this size first before archiving this order.
+                            </p>
+                            <p className="text-gray-600">
+                                This ensures all orders for the same product size are processed in the correct sequence.
+                            </p>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => setPendingOrdersWarning({ open: false, order: null, pendingCount: 0 })}
+                        >
+                            Understood
                         </Button>
                     </DialogFooter>
                 </DialogContent>

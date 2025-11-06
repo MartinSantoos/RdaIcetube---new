@@ -238,6 +238,12 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('admin/inventory/job-orders/{jobOrderId}/status', [App\Http\Controllers\InventoryController::class, 'updateJobOrderStatus'])
         ->name('inventory.job-orders.updateStatus')->middleware('check.admin');
         
+    Route::patch('admin/inventory/job-orders/{jobOrderId}/archive', [App\Http\Controllers\InventoryController::class, 'archiveJobOrder'])
+        ->name('inventory.job-orders.archive')->middleware('check.admin');
+        
+    Route::patch('admin/inventory/job-orders/{jobOrderId}/restore', [App\Http\Controllers\InventoryController::class, 'restoreJobOrder'])
+        ->name('inventory.job-orders.restore')->middleware('check.admin');
+        
     Route::delete('admin/inventory/job-orders/{jobOrderId}', [App\Http\Controllers\InventoryController::class, 'destroyJobOrder'])
         ->name('inventory.job-orders.destroy')->middleware('check.admin');
 

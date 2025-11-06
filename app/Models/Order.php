@@ -51,4 +51,21 @@ class Order extends Model
     {
         return $this->hasOne(Inventory::class, 'size', 'size');
     }
+
+    /**
+     * Get formatted order number
+     */
+    public function getFormattedOrderIdAttribute()
+    {
+        return 'OR-' . str_pad($this->order_id, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Generate a unique order number
+     */
+    public static function generateOrderNumber()
+    {
+        $count = self::count() + 1;
+        return 'OR-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+    }
 }

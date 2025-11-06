@@ -30,7 +30,8 @@ class JobOrder extends Model
         'assigned_to',
         'notes',
         'cancellation_reason',
-        'cancelled_at'
+        'cancelled_at',
+        'archived_at'
     ];
 
     protected $casts = [
@@ -39,6 +40,7 @@ class JobOrder extends Model
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'archived_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
     ];
@@ -69,12 +71,19 @@ class JobOrder extends Model
     }
 
     /**
+     * Get formatted job order ID (accessor for job order number without date)
+     */
+    public function getFormattedJobOrderIdAttribute()
+    {
+        return 'JO-' . str_pad($this->job_order_id, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * Generate a unique job order number
      */
     public static function generateJobOrderNumber()
     {
-        $date = now()->format('Ymd');
-        $count = self::whereDate('created_at', today())->count() + 1;
-        return 'JO-' . $date . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+        $count = self::count() + 1;
+        return 'JO-' . str_pad($count, 4, '0', STR_PAD_LEFT);
     }
 }

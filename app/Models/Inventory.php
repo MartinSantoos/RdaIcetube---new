@@ -35,4 +35,21 @@ class Inventory extends Model
     ];
 
     public $timestamps = false;
+
+    /**
+     * Get formatted inventory number
+     */
+    public function getFormattedInventoryIdAttribute()
+    {
+        return 'INV-' . str_pad($this->inventory_id, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Generate a unique inventory number
+     */
+    public static function generateInventoryNumber()
+    {
+        $count = self::count() + 1;
+        return 'INV-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+    }
 }

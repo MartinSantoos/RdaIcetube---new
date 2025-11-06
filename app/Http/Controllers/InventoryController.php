@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Inventory;
 use App\Models\ActivityLog;
 use App\Models\JobOrder;
+use App\Models\Order;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -39,8 +40,20 @@ class InventoryController extends Controller
             $archivedInventory = Inventory::whereNotNull('archived_at')->orderBy('archived_at', 'desc')->get();
             \Log::info('Archived inventory items count: ' . $archivedInventory->count());
             
-            // Get job orders with related data
+            // Get active job orders (not archived) with related data
             $jobOrders = JobOrder::with(['creator:id,name,username', 'assignedUser:id,name,username'])
+                ->whereNull('archived_at')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            
+            // Get archived job orders with related data
+            $archivedJobOrders = JobOrder::with(['creator:id,name,username', 'assignedUser:id,name,username'])
+                ->whereNotNull('archived_at')
+                ->orderBy('archived_at', 'desc')
+                ->get();
+            
+            // Get active customer orders (for validation)
+            $customerOrders = Order::whereNull('archived_at')
                 ->orderBy('created_at', 'desc')
                 ->get();
             
@@ -67,6 +80,8 @@ class InventoryController extends Controller
                 'inventory' => $inventory,
                 'archivedInventory' => $archivedInventory,
                 'jobOrders' => $jobOrders,
+                'archivedJobOrders' => $archivedJobOrders,
+                'customerOrders' => $customerOrders,
                 'employees' => $employees,
                 'inventoryProducts' => $inventoryProducts
             ]);
@@ -85,6 +100,8 @@ class InventoryController extends Controller
                 'inventory' => [],
                 'archivedInventory' => [],
                 'jobOrders' => [],
+                'archivedJobOrders' => [],
+                'customerOrders' => [],
                 'employees' => [],
                 'inventoryProducts' => []
             ]);
@@ -350,36 +367,110 @@ class InventoryController extends Controller
     }
 
     /**
-     * Delete a job order
+     * Archive a job order
      */
-    public function destroyJobOrder($jobOrderId)
+    public function archiveJobOrder($jobOrderId)
     {
         $jobOrder = JobOrder::findOrFail($jobOrderId);
 
-        // Only allow deletion of pending job orders
-        if ($jobOrder->status !== 'pending') {
-            return redirect()->back()->withErrors([
-                'error' => 'Only pending job orders can be deleted.'
-            ]);
-        }
+        // Update the job order with archived timestamp
+        $jobOrder->update(['archived_at' => now()]);
 
-        // Log the deletion before deleting
+        // Log the archiving activity
         ActivityLog::log(
-            'job_order_deleted',
-            "Deleted job order {$jobOrder->job_order_number} for {$jobOrder->product_name} ({$jobOrder->size})",
+            'job_order_archived',
+            "Archived job order {$jobOrder->job_order_number} for {$jobOrder->product_name} ({$jobOrder->size})",
             $jobOrder,
             [
                 'job_order_number' => $jobOrder->job_order_number,
                 'product_name' => $jobOrder->product_name,
                 'size' => $jobOrder->size,
-                'quantity_to_produce' => $jobOrder->quantity_to_produce
+                'quantity_to_produce' => $jobOrder->quantity_to_produce,
+                'status' => $jobOrder->status
             ],
             (int) auth()->user()->id
         );
 
-        $jobOrder->delete();
+        return redirect()->back()->with('success', 'Job order archived successfully!');
+    }
 
-        return redirect()->back()->with('success', 'Job order deleted successfully!');
+    /**
+     * Restore an archived job order
+     */
+    public function restoreJobOrder($jobOrderId)
+    {
+        $jobOrder = JobOrder::findOrFail($jobOrderId);
+
+        // Check if job order is actually archived
+        if (!$jobOrder->archived_at) {
+            return redirect()->back()->withErrors([
+                'error' => 'Job order is not archived.'
+            ]);
+        }
+
+        // Restore the job order by clearing the archived_at timestamp
+        $jobOrder->update([
+            'archived_at' => null
+        ]);
+
+        // Log the restore action
+        ActivityLog::log(
+            'job_order_restored',
+            "Restored job order {$jobOrder->job_order_number} for {$jobOrder->product_name} ({$jobOrder->size})",
+            $jobOrder,
+            [
+                'job_order_number' => $jobOrder->job_order_number,
+                'product_name' => $jobOrder->product_name,
+                'size' => $jobOrder->size,
+                'quantity_to_produce' => $jobOrder->quantity_to_produce,
+                'status' => $jobOrder->status
+            ],
+            (int) auth()->user()->id
+        );
+
+        return redirect()->back()->with('success', 'Job order restored successfully!');
+    }
+
+    /**
+     * Delete a job order
+     */
+    public function destroyJobOrder($jobOrderId)
+    {
+        try {
+            $jobOrder = JobOrder::findOrFail($jobOrderId);
+
+            // Check if job order is archived - if archived, allow deletion regardless of status
+            // If not archived, only allow deletion of pending job orders
+            if (!$jobOrder->archived_at && $jobOrder->status !== 'pending') {
+                return redirect()->back()->withErrors([
+                    'error' => 'Only pending or archived job orders can be deleted.'
+                ]);
+            }
+
+            // Log the deletion before deleting
+            ActivityLog::log(
+                'job_order_deleted',
+                "Deleted job order {$jobOrder->job_order_number} for {$jobOrder->product_name} ({$jobOrder->size})",
+                $jobOrder,
+                [
+                    'job_order_number' => $jobOrder->job_order_number,
+                    'product_name' => $jobOrder->product_name,
+                    'size' => $jobOrder->size,
+                    'quantity_to_produce' => $jobOrder->quantity_to_produce
+                ],
+                (int) auth()->user()->id
+            );
+
+            $jobOrder->delete();
+
+            return redirect()->back()->with('success', 'Job order deleted successfully!');
+            
+        } catch (\Exception $e) {
+            \Log::error('Job order deletion failed: ' . $e->getMessage());
+            return redirect()->back()->withErrors([
+                'error' => 'Failed to delete job order: ' . $e->getMessage()
+            ]);
+        }
     }
 
     /**

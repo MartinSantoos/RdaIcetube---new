@@ -43,6 +43,7 @@ interface Equipment {
     updated_at?: string;
     maintenances?: Maintenance[];
     selectedMaintenance?: Maintenance;
+    formatted_equipment_id?: string;
 }
 
 interface Maintenance {
@@ -102,6 +103,7 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
             item.equipment_name.toLowerCase().includes(searchLower) ||
             item.equipment_type.toLowerCase().includes(searchLower) ||
             item.id.toString().includes(searchLower) ||
+            (item.formatted_equipment_id || `EQ-${String(item.id).padStart(4, '0')}`).toLowerCase().includes(searchLower) ||
             item.status.toLowerCase().includes(searchLower)
         );
     });
@@ -708,7 +710,9 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                             <TableCell>
                                                                 {getStatusBadge(item.status)}
                                                             </TableCell>
-                                                            <TableCell className="font-medium">{item.id}</TableCell>
+                                                            <TableCell className="font-medium">
+                                                                {item.formatted_equipment_id || `EQ-${String(item.id).padStart(4, '0')}`}
+                                                            </TableCell>
                                                             <TableCell>{item.equipment_name}</TableCell>
                                                             <TableCell>{item.equipment_type}</TableCell>
                                                             <TableCell>
@@ -777,7 +781,9 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                 filteredEquipment.map((item) => (
                                                     <div key={item.id} className="bg-white border rounded-lg p-4 shadow-sm">
                                                         <div className="flex items-center justify-between mb-3">
-                                                            <div className="font-semibold text-lg text-gray-900">#{item.id}</div>
+                                                            <div className="font-semibold text-lg text-gray-900">
+                                                                #{item.formatted_equipment_id || `EQ-${String(item.id).padStart(4, '0')}`}
+                                                            </div>
                                                             <div className="flex items-center gap-2">
                                                                 {getStatusBadge(item.status)}
                                                                 <DropdownMenu>
@@ -1384,7 +1390,7 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                         Equipment ID
                                     </label>
                                     <div className="text-sm text-gray-900">
-                                        {selectedEquipment.id}
+                                        {selectedEquipment.formatted_equipment_id || `EQ-${String(selectedEquipment.id).padStart(4, '0')}`}
                                     </div>
                                 </div>
                                 

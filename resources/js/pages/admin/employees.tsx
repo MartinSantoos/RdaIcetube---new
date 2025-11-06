@@ -39,6 +39,7 @@ interface Employee {
     contact: string;
     user_type: number;
     archived?: boolean;
+    formatted_employee_id?: string;
 }
 
 interface EmployeesProps {
@@ -167,14 +168,16 @@ export default function Employees({ user, employees = [], archivedEmployees = []
     const filteredEmployees = employees.filter(emp => 
         emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         emp.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.id.toString().includes(searchTerm)
+        emp.id.toString().includes(searchTerm) ||
+        (emp.formatted_employee_id || `EMP-${String(emp.id).padStart(4, '0')}`).toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     // Filter archived employees based on search term
     const filteredArchivedEmployees = archivedEmployees.filter(emp => 
         emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         emp.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.id.toString().includes(searchTerm)
+        emp.id.toString().includes(searchTerm) ||
+        (emp.formatted_employee_id || `EMP-${String(emp.id).padStart(4, '0')}`).toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     // Add new employee
@@ -569,7 +572,9 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                                 <TableCell>
                                                                     <StatusBadge status={emp.status} size="sm" />
                                                                 </TableCell>
-                                                                <TableCell className="font-medium">{emp.id}</TableCell>
+                                                                <TableCell className="font-medium">
+                                                                    {emp.formatted_employee_id || `EMP-${String(emp.id).padStart(4, '0')}`}
+                                                                </TableCell>
                                                             <TableCell className="font-medium">{emp.name}</TableCell>
                                                             <TableCell>{emp.position}</TableCell>
                                                             <TableCell>{emp.contact}</TableCell>
@@ -635,7 +640,9 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                     <div className="flex justify-between items-start">
                                                         <div>
                                                             <h4 className="font-semibold text-gray-900">{emp.name}</h4>
-                                                            <p className="text-sm text-gray-700">ID: {emp.id}</p>
+                                                            <p className="text-sm text-gray-700">
+                                                                ID: {emp.formatted_employee_id || `EMP-${String(emp.id).padStart(4, '0')}`}
+                                                            </p>
                                                         </div>
                                                         <div className="flex items-center space-x-2">
                                                             <StatusBadge status={emp.status} size="sm" />
@@ -743,7 +750,9 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                         <TableBody>
                                                             {filteredArchivedEmployees.map(emp => (
                                                             <TableRow key={emp.id} className="hover:bg-gray-50 bg-gray-50">
-                                                                <TableCell className="font-medium text-gray-600">{emp.id}</TableCell>
+                                                                <TableCell className="font-medium text-gray-600">
+                                                                    {emp.formatted_employee_id || `EMP-${String(emp.id).padStart(4, '0')}`}
+                                                                </TableCell>
                                                                 <TableCell className="font-medium text-gray-600">{emp.name}</TableCell>
                                                                 <TableCell className="text-gray-600">{emp.position}</TableCell>
                                                                 <TableCell className="text-gray-600">{emp.contact}</TableCell>
@@ -790,7 +799,9 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                                         <div className="flex justify-between items-start">
                                                             <div>
                                                                 <h4 className="font-semibold text-gray-700">{emp.name}</h4>
-                                                                <p className="text-sm text-gray-600">ID: {emp.id}</p>
+                                                                <p className="text-sm text-gray-600">
+                                                                    ID: {emp.formatted_employee_id || `EMP-${String(emp.id).padStart(4, '0')}`}
+                                                                </p>
                                                             </div>
                                                             <div className="flex items-center space-x-2">
                                                                 <Badge variant="destructive">Archived</Badge>
