@@ -15,6 +15,8 @@ class Maintenance extends Model
         'cost',
         'equipment_status_at_maintenance',
         'equipment_broken_reason_at_maintenance',
+        'operational_reason',
+        'broken_reason',
     ];
 
     protected $casts = [

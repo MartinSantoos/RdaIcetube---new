@@ -58,6 +58,8 @@ interface Maintenance {
     updated_at: string;
     equipment_status_at_maintenance?: string;
     equipment_broken_reason_at_maintenance?: string;
+    operational_reason?: string;
+    broken_reason?: string;
 }
 
 interface MaintenanceFormData {
@@ -226,9 +228,12 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
     const [isViewDetailsModalOpen, setIsViewDetailsModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isBrokenModalOpen, setIsBrokenModalOpen] = useState(false);
+    const [isOperationalModalOpen, setIsOperationalModalOpen] = useState(false);
     const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
     const [equipmentToBroken, setEquipmentToBroken] = useState<Equipment | null>(null);
+    const [equipmentToOperational, setEquipmentToOperational] = useState<Equipment | null>(null);
     const [brokenReason, setBrokenReason] = useState('');
+    const [operationalReason, setOperationalReason] = useState('');
 
     // Enhanced status badge using StatusBadge component
     const getStatusBadge = (status: string) => {
@@ -263,17 +268,9 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
         });
     };
 
-    const markAsCompleted = (equipmentId: number) => {
-        // Mark equipment as operational using Inertia router
-        router.post(`/admin/equipment/${equipmentId}/mark-operational`, {}, {
-            onSuccess: () => {
-                // Optionally show success message or handle success
-                console.log('Equipment marked as operational successfully');
-            },
-            onError: (errors) => {
-                console.error('Error marking equipment as operational:', errors);
-            }
-        });
+    const markAsCompleted = (equipment: Equipment) => {
+        setEquipmentToOperational(equipment);
+        setIsOperationalModalOpen(true);
     };
 
     const markAsBroken = (equipment: Equipment) => {
@@ -299,6 +296,28 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
             },
             onError: (errors) => {
                 console.error('Error marking equipment as broken:', errors);
+            }
+        });
+    };
+
+    const handleMarkAsOperational = () => {
+        if (!equipmentToOperational || !operationalReason.trim()) {
+            alert('Please provide a reason for marking as operational');
+            return;
+        }
+
+        // Mark equipment as operational using Inertia router
+        router.post(`/admin/equipment/${equipmentToOperational.id}/mark-operational`, {
+            reason: operationalReason
+        }, {
+            onSuccess: () => {
+                console.log('Equipment marked as operational successfully');
+                setIsOperationalModalOpen(false);
+                setOperationalReason('');
+                setEquipmentToOperational(null);
+            },
+            onError: (errors) => {
+                console.error('Error marking equipment as operational:', errors);
             }
         });
     };
@@ -736,7 +755,7 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                                         </DropdownMenuItem>
                                                                         {item.status === 'under_maintenance' && (
                                                                             <DropdownMenuItem 
-                                                                                onClick={() => markAsCompleted(item.id)}
+                                                                                onClick={() => markAsCompleted(item)}
                                                                                 className="text-green-600"
                                                                             >
                                                                                 <CheckCircle className="mr-2 h-4 w-4" />
@@ -745,7 +764,7 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                                         )}
                                                                         {item.status === 'broken' && (
                                                                             <DropdownMenuItem 
-                                                                                onClick={() => markAsCompleted(item.id)}
+                                                                                onClick={() => markAsCompleted(item)}
                                                                                 className="text-green-600"
                                                                             >
                                                                                 <CheckCircle className="mr-2 h-4 w-4" />
@@ -806,7 +825,7 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                                         </DropdownMenuItem>
                                                                         {item.status === 'under_maintenance' && (
                                                                             <DropdownMenuItem 
-                                                                                onClick={() => markAsCompleted(item.id)}
+                                                                                onClick={() => markAsCompleted(item)}
                                                                                 className="text-green-600"
                                                                             >
                                                                                 <CheckCircle className="mr-2 h-4 w-4" />
@@ -815,7 +834,7 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                                         )}
                                                                         {item.status === 'broken' && (
                                                                             <DropdownMenuItem 
-                                                                                onClick={() => markAsCompleted(item.id)}
+                                                                                onClick={() => markAsCompleted(item)}
                                                                                 className="text-green-600"
                                                                             >
                                                                                 <CheckCircle className="mr-2 h-4 w-4" />
@@ -1485,18 +1504,22 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                         <p className="text-sm text-gray-600 mt-1">{maintenance.description}</p>
                                                     </div>
                                                 )}
-                                                {/* Show historical equipment status at time of maintenance */}
-                                                {maintenance.equipment_status_at_maintenance && (
-                                                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
-                                                        <div className="text-xs font-medium text-blue-800">Equipment Status During Maintenance:</div>
-                                                        <div className="text-sm text-blue-700 capitalize">
-                                                            {maintenance.equipment_status_at_maintenance.replace('_', ' ')}
+                                                {/* Show operational reason when maintenance is completed */}
+                                                {maintenance.status === 'completed' && maintenance.operational_reason && (
+                                                    <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                                                        <div className="text-xs font-medium text-green-800">Completion Reason:</div>
+                                                        <div className="text-xs text-green-600 mt-1">
+                                                            {maintenance.operational_reason}
                                                         </div>
-                                                        {maintenance.equipment_broken_reason_at_maintenance && (
-                                                            <div className="text-xs text-blue-600 mt-1">
-                                                                Reason: {maintenance.equipment_broken_reason_at_maintenance}
-                                                            </div>
-                                                        )}
+                                                    </div>
+                                                )}
+                                                {/* Show broken reason when maintenance is marked as broken */}
+                                                {maintenance.status === 'broken' && maintenance.broken_reason && (
+                                                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                                                        <div className="text-xs font-medium text-red-800">Broken Reason:</div>
+                                                        <div className="text-xs text-red-600 mt-1">
+                                                            {maintenance.broken_reason}
+                                                        </div>
                                                     </div>
                                                 )}
                                                 <div className="text-xs text-gray-500 mt-2">
@@ -1584,6 +1607,64 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                         >
                             <AlertTriangle className="mr-2 h-4 w-4" />
                             Mark as Broken
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Mark as Operational Reason Modal */}
+            <Dialog open={isOperationalModalOpen} onOpenChange={(open) => {
+                if (!open) {
+                    setIsOperationalModalOpen(false);
+                    setOperationalReason('');
+                    setEquipmentToOperational(null);
+                }
+            }}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                            Mark Equipment as Operational
+                        </DialogTitle>
+                        <DialogDescription>
+                            {equipmentToOperational && (
+                                <>Please provide a reason for marking "<span className="font-medium">{equipmentToOperational.equipment_name}</span>" as operational.</>
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Reason for marking as operational:
+                            </label>
+                            <textarea
+                                value={operationalReason}
+                                onChange={(e) => setOperationalReason(e.target.value)}
+                                placeholder="Please describe what has been fixed or completed..."
+                                className="w-full p-3 border border-gray-300 rounded-md resize-none"
+                                rows={4}
+                                required
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => {
+                                setIsOperationalModalOpen(false);
+                                setOperationalReason('');
+                                setEquipmentToOperational(null);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="default" 
+                            onClick={handleMarkAsOperational}
+                            disabled={!operationalReason.trim()}
+                        >
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Mark as Operational
                         </Button>
                     </DialogFooter>
                 </DialogContent>

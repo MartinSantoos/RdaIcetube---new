@@ -154,9 +154,12 @@ class EquipmentController extends Controller
     /**
      * Mark equipment as operational (maintenance completed)
      */
-    public function markAsOperational($id)
+    public function markAsOperational(Request $request, $id)
     {
         $equipment = Equipment::findOrFail($id);
+        
+        // Get the reason from request
+        $reason = $request->input('reason');
         
         // Update equipment status (but keep broken_reason as historical record)
         $equipment->update(['status' => 'operational']);
@@ -165,19 +168,28 @@ class EquipmentController extends Controller
         // NEVER update broken maintenance records - they must remain as historical records
         Maintenance::where('equipment_id', $id)
             ->whereIn('status', ['scheduled', 'in_progress'])
-            ->update(['status' => 'completed']);
+            ->update([
+                'status' => 'completed',
+                'operational_reason' => $reason
+            ]);
 
-        // Log the activity
+        // Log the activity with reason
         if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
+            $activityMessage = "Completed maintenance for {$equipment->equipment_name} - Equipment back to operational status";
+            if ($reason) {
+                $activityMessage .= ". Reason: {$reason}";
+            }
+            
             ActivityLog::log(
                 'maintenance_completed',
-                "Completed maintenance for {$equipment->equipment_name} - Equipment back to operational status",
+                $activityMessage,
                 $equipment,
                 [
                     'equipment_name' => $equipment->equipment_name,
                     'equipment_type' => $equipment->equipment_type,
                     'previous_status' => 'under_maintenance',
-                    'new_status' => 'operational'
+                    'new_status' => 'operational',
+                    'operational_reason' => $reason
                 ],
                 auth()->user()->id
             );
@@ -211,7 +223,8 @@ class EquipmentController extends Controller
             ->update([
                 'status' => 'broken',
                 'equipment_status_at_maintenance' => 'broken',
-                'equipment_broken_reason_at_maintenance' => $request->reason
+                'equipment_broken_reason_at_maintenance' => $request->reason,
+                'broken_reason' => $request->reason
             ]);
 
         // Log the activity
