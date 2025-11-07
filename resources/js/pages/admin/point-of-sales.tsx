@@ -1200,7 +1200,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                                 onClick={() => handleViewReceipt(order)}
                                                                             >
                                                                                 <Printer className="h-4 w-4 mr-2 text-blue-600" />
-                                                                                View Receipt
+                                                                                View Invoice
                                                                             </DropdownMenuItem>
                                                                         </>
                                                                     )}
@@ -1218,7 +1218,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                                 onClick={() => handleViewReceipt(order)}
                                                                             >
                                                                                 <Printer className="h-4 w-4 mr-2 text-blue-600" />
-                                                                                View Receipt
+                                                                                View Invoice
                                                                             </DropdownMenuItem>
                                                                             <DropdownMenuItem 
                                                                                 className="cursor-pointer"
@@ -1308,7 +1308,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                             onClick={() => handleViewReceipt(order)}
                                                                         >
                                                                             <Printer className="h-4 w-4 mr-2 text-blue-600" />
-                                                                            View Receipt
+                                                                            View Invoice
                                                                         </DropdownMenuItem>
                                                                     </>
                                                                 )}
@@ -1326,7 +1326,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                             onClick={() => handleViewReceipt(order)}
                                                                         >
                                                                             <Printer className="h-4 w-4 mr-2 text-blue-600" />
-                                                                            View Receipt
+                                                                            View Invoice
                                                                         </DropdownMenuItem>
                                                                         <DropdownMenuItem 
                                                                             className="cursor-pointer"
@@ -1588,7 +1588,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                                                                 onClick={() => handleViewReceipt(order)}
                                                                             >
                                                                                 <Printer className="h-4 w-4 mr-2 text-blue-600" />
-                                                                                View Receipt
+                                                                                View Invoice
                                                                             </DropdownMenuItem>
                                                                             <DropdownMenuItem
                                                                                 onClick={() => handleRestoreOrder(order)}
@@ -2423,7 +2423,7 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                 placeholder="Please explain why this order is being cancelled..."
                                 value={cancellationReason}
                                 onChange={(e) => setCancellationReason(e.target.value)}
-                                className="mt-1"
+                                className="mt-1 text-gray-900 bg-white border-gray-300 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500"
                                 rows={3}
                             />
                         </div>

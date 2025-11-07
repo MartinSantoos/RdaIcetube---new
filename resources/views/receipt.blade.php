@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Receipt - Order #{{ $order->order_id }}</title>
+    <title>Invoice - Order #{{ $order->order_id }}</title>
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -136,7 +136,7 @@
         
         <div class="receipt-details">
             <div class="detail-row">
-                <span><strong>Receipt#:</strong></span>
+                <span><strong>Invoice#:</strong></span>
                 <span>{{ $order->order_id }}</span>
             </div>
             <div class="detail-row">
@@ -197,7 +197,7 @@
         </div>
         
         <div class="print-section">
-            <button class="print-button" onclick="window.print()">Print Receipt</button>
+            <button class="print-button" onclick="window.print()">Print Invoice</button>
         </div>
     </div>
 </body>

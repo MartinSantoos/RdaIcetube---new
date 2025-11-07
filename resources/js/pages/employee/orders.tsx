@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -114,6 +113,8 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
     const [showSuccess, setShowSuccess] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+    const [customerSuggestions, setCustomerSuggestions] = useState<{customer_name: string, address: string, contact_number: string}[]>([]);
+    const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
 
     // Get today's date in YYYY-MM-DD format
     const getTodayDate = () => {
@@ -129,9 +130,6 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
         // Get hours in Philippines time (0-23)
         const hours = philippinesTime.getUTCHours();
         
-        // Business Logic:
-        // If current time < 2:00 AM (hours 0-1), use yesterday's date
-        // If current time >= 2:00 AM (hours 2-23), use today's date
         if (hours < 2) {
             // Use previous day if before 2:00 AM (hours 0 or 1)
             const previousDay = new Date(philippinesTime.getTime() - (24 * 60 * 60 * 1000));
@@ -456,9 +454,8 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                     uniqueItems.set(key, item);
                 }
             });
-            const groupedFiltered = Array.from(uniqueItems.values());
             
-            return groupedFiltered;
+            return Array.from(uniqueItems.values());
         } catch (error) {
             console.error('Error in availableItems calculation:', error);
             return [];
@@ -488,6 +485,96 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
         
         return Math.max(...availableInventory.map(item => item.quantity));
     }, [inventory]);
+
+    // Get unique customers from previous orders
+    const uniqueCustomers = useMemo(() => {
+        if (!orders || !Array.isArray(orders)) return [];
+        
+        const customerMap = new Map();
+        orders.forEach(order => {
+            if (order.customer_name && order.address && order.contact_number) {
+                const key = order.customer_name.toLowerCase();
+                if (!customerMap.has(key)) {
+                    customerMap.set(key, {
+                        customer_name: order.customer_name,
+                        address: order.address,
+                        contact_number: order.contact_number
+                    });
+                }
+            }
+        });
+        
+        return Array.from(customerMap.values()).sort((a, b) => 
+            a.customer_name.localeCompare(b.customer_name)
+        );
+    }, [orders]);
+
+    // Filter customer suggestions based on input
+    const filteredCustomerSuggestions = useMemo(() => {
+        if (!data.customer_name || data.customer_name.length < 2) return [];
+        
+        return uniqueCustomers.filter(customer =>
+            customer.customer_name.toLowerCase().includes(data.customer_name.toLowerCase())
+        ).slice(0, 5); // Limit to 5 suggestions
+    }, [uniqueCustomers, data.customer_name]);
+
+    // Calculate total based on selected size and quantity
+    const calculatedTotal = useMemo(() => {
+        if (!data.size || !data.quantity || !inventory) return 0;
+        
+        const quantity = parseInt(data.quantity);
+        if (isNaN(quantity) || quantity <= 0) return 0;
+        
+        // Parse the selected size to get product name and size
+        const lastHyphenIndex = data.size.lastIndexOf('-');
+        
+        if (lastHyphenIndex > -1) {
+            // Format: "product_name-size"
+            const productName = data.size.substring(0, lastHyphenIndex);
+            const size = data.size.substring(lastHyphenIndex + 1);
+            
+            // Try to find by product_name and size
+            let selectedItem = inventory.find(item => 
+                item.product_name === productName && item.size === size
+            );
+            
+            // If product_name is empty/undefined, try finding by size only
+            if (!selectedItem || !productName || productName === '' || productName === 'undefined') {
+                selectedItem = inventory.find(item => item.size === size);
+            }
+            
+            if (selectedItem && selectedItem.price) {
+                return quantity * selectedItem.price;
+            }
+        } else {
+            // Fallback: if no hyphen, treat it as just size (legacy format)
+            const selectedItem = inventory.find(item => item.size === data.size);
+            
+            if (selectedItem && selectedItem.price) {
+                return quantity * selectedItem.price;
+            }
+        }
+        
+        return 0;
+    }, [data.size, data.quantity, inventory]);
+
+    // Handle customer selection from suggestions
+    const handleCustomerSelect = (customer: {customer_name: string, address: string, contact_number: string}) => {
+        setData({
+            ...data,
+            customer_name: customer.customer_name,
+            address: customer.address,
+            contact_number: customer.contact_number
+        });
+        setShowCustomerSuggestions(false);
+    };
+
+    // Handle customer name input change
+    const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setData('customer_name', value);
+        setShowCustomerSuggestions(value.length >= 2);
+    };
 
     // Form validation
     const validateForm = () => {
@@ -555,6 +642,9 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
             });
             // Clear validation errors
             setValidationErrors({});
+            // Clear customer suggestions
+            setShowCustomerSuggestions(false);
+            setCustomerSuggestions([]);
         } else {
             // When opening modal, ensure order date is set to current Philippines date
             const currentDate = getPhilippinesDate();
@@ -620,7 +710,8 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                 const searchTermLower = searchTerm.toLowerCase();
                 const matchesSearch = searchTerm === '' || 
                     (order?.customer_name || '').toLowerCase().includes(searchTermLower) ||
-                    (order?.order_id || '').toString().toLowerCase().includes(searchTermLower)
+                    (order?.order_id || '').toString().toLowerCase().includes(searchTermLower) ||
+                    (order?.formatted_order_id || `OR-${String(order?.order_id || '').padStart(4, '0')}`).toLowerCase().includes(searchTermLower)
 
                 const matchesStatus = statusFilter === 'all' || order?.status === statusFilter;
 
@@ -974,7 +1065,9 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                                     <TableCell className="p-2">
                                                         {getStatusBadge(order.status)}
                                                     </TableCell>
-                                                    <TableCell className="font-medium text-sm p-2">{order.order_id}</TableCell>
+                                                    <TableCell className="font-medium text-sm p-2">
+                                                        {order.formatted_order_id || `OR-${String(order.order_id).padStart(4, '0')}`}
+                                                    </TableCell>
                                                     <TableCell className="break-words text-sm leading-tight p-2" title={order.customer_name}>{order.customer_name}</TableCell>
                                                     <TableCell className="break-words text-sm leading-tight p-2" title={order.address}>{order.address}</TableCell>
                                                     <TableCell className="capitalize text-sm p-2">{order.size}</TableCell>
@@ -1049,7 +1142,9 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                     <div key={order.order_id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                                         <div className="flex justify-between items-start mb-3">
                                             <div>
-                                                <div className="font-medium text-sm text-gray-700">Order #{order.order_id}</div>
+                                                <div className="font-medium text-sm text-gray-700">
+                                                    Order #{order.formatted_order_id || `OR-${String(order.order_id).padStart(4, '0')}`}
+                                                </div>
                                                 <div className="font-semibold text-lg text-gray-900">{order.customer_name}</div>
                                             </div>
                                             <div className="flex items-center space-x-2">
@@ -1190,8 +1285,99 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                     </div>
                                 </div>
 
+                                {/* Job Orders Mobile Card View */}
+                                <div className="block md:hidden space-y-4">
+                                    {filteredJobOrders.length === 0 ? (
+                                        <div className="text-center py-12">
+                                            <div className="text-gray-500">
+                                                {jobOrderSearchTerm || jobOrderStatusFilter !== 'all' ? 'No job orders found matching your filters' : 'No job orders assigned to you'}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        filteredJobOrders.map((jobOrder) => (
+                                            <div key={jobOrder.job_order_id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                                {/* Header with Job Order # and Status */}
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <h3 className="font-medium text-blue-600">
+                                                            {jobOrder.formatted_job_order_id || `JO-${String(jobOrder.job_order_id).padStart(4, '0')}`}
+                                                        </h3>
+                                                        <p className="text-sm text-gray-600">{jobOrder.product_name}</p>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        {getJobOrderStatusBadge(jobOrder.status)}
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="ghost" size="sm">
+                                                                    <MoreHorizontal className="w-4 h-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => handleViewJobOrderDetails(jobOrder)}
+                                                                    className="text-blue-600"
+                                                                >
+                                                                    <Eye className="w-4 h-4 mr-2" />
+                                                                    View Details
+                                                                </DropdownMenuItem>
+                                                                {jobOrder.status === 'pending' && (
+                                                                    <DropdownMenuItem 
+                                                                        onClick={() => handleJobOrderStatusUpdate(jobOrder.job_order_id, 'in_progress')}
+                                                                        className="text-blue-600"
+                                                                    >
+                                                                        <Play className="w-4 h-4 mr-2" />
+                                                                        Start Production
+                                                                    </DropdownMenuItem>
+                                                                )}
+                                                                {jobOrder.status === 'in_progress' && (
+                                                                    <DropdownMenuItem 
+                                                                        onClick={() => handleJobOrderStatusUpdate(jobOrder.job_order_id, 'completed')}
+                                                                        className="text-green-600"
+                                                                    >
+                                                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                                                        Mark Complete
+                                                                    </DropdownMenuItem>
+                                                                )}
+                                                                {(jobOrder.status === 'pending' || jobOrder.status === 'in_progress') && (
+                                                                    <DropdownMenuItem 
+                                                                        onClick={() => handleCancelJobOrder(jobOrder)}
+                                                                        className="text-red-600"
+                                                                    >
+                                                                        <X className="w-4 h-4 mr-2" />
+                                                                        Cancel
+                                                                    </DropdownMenuItem>
+                                                                )}
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </div>
+
+                                                {/* Information Grid */}
+                                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                                    <div>
+                                                        <span className="text-gray-700">Size:</span>
+                                                        <div className="font-medium text-gray-800">{jobOrder.size}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-700">Quantity:</span>
+                                                        <div className="font-medium text-gray-800">{jobOrder.quantity_to_produce}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-700">Production Date:</span>
+                                                        <div className="font-medium text-gray-800">{new Date(jobOrder.production_date).toLocaleDateString()}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-700">Created By:</span>
+                                                        <div className="font-medium text-gray-800">{jobOrder.creator.name || jobOrder.creator.username}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
                                 {/* Job Orders Table */}
-                                <div className="overflow-x-auto">
+                                <div className="hidden md:block overflow-x-auto">
                                     <Table>
                                         <TableHeader>
                                             <TableRow className="bg-gray-50">
@@ -1304,7 +1490,9 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
                                     <div>
                                         <span className="text-xs text-gray-500">Order ID</span>
-                                        <p className="font-semibold">{selectedOrder.order_id}</p>
+                                        <p className="font-semibold">
+                                            {selectedOrder.formatted_order_id || `OR-${String(selectedOrder.order_id).padStart(4, '0')}`}
+                                        </p>
                                     </div>
                                     <div>
                                         <span className="text-xs text-gray-500">Customer</span>
@@ -1510,7 +1698,9 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                         <div className="space-y-4">
                             <div className="bg-gray-50 p-3 rounded-lg">
                                 <p className="text-sm text-gray-600">Order ID:</p>
-                                <p className="font-semibold">#{orderToComplete.order_id}</p>
+                                <p className="font-semibold">
+                                    #{orderToComplete.formatted_order_id || `OR-${String(orderToComplete.order_id).padStart(4, '0')}`}
+                                </p>
                                 <p className="text-sm text-gray-600 mt-1">Customer:</p>
                                 <p className="font-semibold">{orderToComplete.customer_name}</p>
                             </div>
@@ -1673,17 +1863,43 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                             )}
                             
                             <form onSubmit={handleCreateOrderSubmit} className="space-y-6">
-                                {/* Customer Name */}
-                                <div className="space-y-3">
-                                    <Label htmlFor="customer_name" className="text-base font-medium">Customer Name</Label>
+                                {/* Customer Name with Autocomplete */}
+                                <div className="space-y-3 relative">
+                                    <Label htmlFor="customer_name" className="text-base font-medium">
+                                        Customer Name 
+                                        {uniqueCustomers.length > 0 && (
+                                            <span className="text-sm text-gray-500 ml-2">(Start typing to see previous customers)</span>
+                                        )}
+                                    </Label>
                                     <Input
                                         id="customer_name"
                                         type="text"
                                         placeholder="Enter customer name"
                                         value={data.customer_name}
-                                        onChange={(e) => setData('customer_name', e.target.value)}
+                                        onChange={handleCustomerNameChange}
+                                        onFocus={() => data.customer_name.length >= 2 && setShowCustomerSuggestions(true)}
+                                        onBlur={() => setTimeout(() => setShowCustomerSuggestions(false), 200)}
                                         className={`w-full h-12 text-base ${validationErrors.customer_name || errors.customer_name ? 'border-red-500' : ''}`}
+                                        autoComplete="off"
                                     />
+                                    
+                                    {/* Customer Suggestions Dropdown */}
+                                    {showCustomerSuggestions && filteredCustomerSuggestions.length > 0 && (
+                                        <div className="absolute z-50 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto top-full mt-1">
+                                            {filteredCustomerSuggestions.map((customer, index) => (
+                                                <div
+                                                    key={index}
+                                                    className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                                                    onClick={() => handleCustomerSelect(customer)}
+                                                >
+                                                    <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                                                    <div className="text-sm text-gray-600">{customer.address}</div>
+                                                    <div className="text-sm text-gray-500">{customer.contact_number}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
                                     {(validationErrors.customer_name || errors.customer_name) && (
                                         <p className="text-sm text-red-600">
                                             {validationErrors.customer_name || (Array.isArray(errors.customer_name) ? errors.customer_name[0] : errors.customer_name)}
@@ -1748,7 +1964,13 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                                 // Clear size if quantity changes and no longer sufficient
                                                 if (data.size && value) {
                                                     const requestedQuantity = parseInt(value);
-                                                    const selectedItem = inventory.find(item => item.size === data.size);
+                                                    // Parse the selected value to get product_name and size (split on last hyphen)
+                                                    const lastHyphenIndex = data.size.lastIndexOf('-');
+                                                    const productName = lastHyphenIndex > -1 ? data.size.substring(0, lastHyphenIndex) : '';
+                                                    const size = lastHyphenIndex > -1 ? data.size.substring(lastHyphenIndex + 1) : data.size;
+                                                    const selectedItem = inventory.find(item => 
+                                                        item.product_name === productName && item.size === size
+                                                    );
                                                     if (selectedItem && selectedItem.quantity < requestedQuantity) {
                                                         setData('size', '');
                                                     }
@@ -1768,41 +1990,65 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                         )}
                                     </div>
                                     <div className="space-y-3">
-                                        <Label htmlFor="size" className="text-base font-medium">Size</Label>
-                                        <select
-                                            id="size"
-                                            value={availableItems.length > 0 ? data.size : ""}
-                                            onChange={(e) => {
-                                                const value = e.target.value;
-                                                if (value && value !== "" && value !== "no-stock") {
-                                                    setData('size', value);
-                                                }
-                                            }}
-                                            className={`w-full h-12 text-base px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${validationErrors.size || errors.size ? 'border-red-500' : 'border-gray-300'}`}
-                                            style={{ 
-                                                color: '#111827', 
-                                                backgroundColor: 'white',
-                                                fontSize: '1rem'
-                                            }}
-                                        >
-                                            <option value="" style={{ color: '#6B7280', backgroundColor: 'white' }}>
-                                                {availableItems.length === 0 
-                                                    ? (data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock')
-                                                    : "Select size"
-                                                }
-                                            </option>
-                                            {availableItems.length > 0 ? (
-                                                availableItems.map((item) => (
-                                                    <option key={item.size} value={item.size} style={{ color: '#111827', backgroundColor: 'white' }}>
-                                                        {item.size.charAt(0).toUpperCase() + item.size.slice(1)} - ₱{item.price} (Stock: {item.quantity})
-                                                    </option>
-                                                ))
-                                            ) : (
-                                                <option value="no-stock" disabled style={{ color: '#6B7280', backgroundColor: 'white' }}>
-                                                    {data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock'}
+                                        <Label htmlFor="size-modal" className="text-base font-medium">Size</Label>
+                                        {Array.isArray(availableItems) ? (
+                                            <select 
+                                                id="size-modal"
+                                                value={data.size} 
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    if (value && value !== "no-stock") {
+                                                        setData('size', value);
+                                                    }
+                                                }}
+                                                className={`w-full h-12 text-base px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${validationErrors.size || errors.size ? 'border-red-500' : 'border-gray-300'}`}
+                                                style={{ 
+                                                    color: '#111827', 
+                                                    backgroundColor: 'white',
+                                                    fontSize: '1rem'
+                                                }}
+                                            >
+                                                <option value="" style={{ color: '#6B7280', backgroundColor: 'white' }}>
+                                                    {availableItems.length === 0 
+                                                        ? (data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock')
+                                                        : "Select size"
+                                                    }
                                                 </option>
-                                            )}
-                                        </select>
+                                                {availableItems.length > 0 ? (
+                                                    availableItems.map((item) => {
+                                                        const productName = item.product_name || '';
+                                                        const size = item.size || '';
+                                                        
+                                                        // Create key and value based on whether product_name exists
+                                                        const key = productName && productName !== '' && productName !== 'undefined' 
+                                                            ? `${productName}-${size}` 
+                                                            : size;
+                                                        
+                                                        const value = productName && productName !== '' && productName !== 'undefined' 
+                                                            ? `${productName}-${size}` 
+                                                            : size;
+                                                        
+                                                        const displayText = productName && productName !== '' && productName !== 'undefined'
+                                                            ? `${productName} - ${size.charAt(0).toUpperCase() + size.slice(1)} - ₱${item.price} (Stock: ${item.quantity})`
+                                                            : `${size.charAt(0).toUpperCase() + size.slice(1)} - ₱${item.price} (Stock: ${item.quantity})`;
+                                                        
+                                                        return (
+                                                            <option key={key} value={value} style={{ color: '#111827', backgroundColor: 'white' }}>
+                                                                {displayText}
+                                                            </option>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <option value="no-stock" disabled style={{ color: '#6B7280', backgroundColor: 'white' }}>
+                                                        {data.quantity ? `No sizes have enough stock for quantity ${data.quantity}` : 'No sizes available in stock'}
+                                                    </option>
+                                                )}
+                                            </select>
+                                        ) : (
+                                            <div className="w-full h-12 text-base border border-gray-300 rounded-md flex items-center px-3 bg-gray-100">
+                                                <span className="text-gray-500">Loading sizes...</span>
+                                            </div>
+                                        )}
                                         {(validationErrors.size || errors.size) && (
                                             <p className="text-sm text-red-600">
                                                 {validationErrors.size || (Array.isArray(errors.size) ? errors.size[0] : errors.size)}
@@ -1820,7 +2066,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                             <Input
                                                 id="order_date"
                                                 type="date"
-                                                placeholder="00/00/00"
+                                                placeholder="dd/mm/yyyy"
                                                 value={data.order_date}
                                                 onChange={(e) => setData('order_date', e.target.value)}
                                                 className={`w-full h-12 text-base bg-gray-100 ${validationErrors.order_date || errors.order_date ? 'border-red-500' : ''}`}
@@ -1841,14 +2087,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                                     placeholder="dd/mm/yyyy"
                                                     value={data.delivery_date}
                                                     onChange={(e) => setData('delivery_date', e.target.value)}
-                                                    onClick={(e) => {
-                                                        try {
-                                                            (e.target as HTMLInputElement).showPicker();
-                                                        } catch (error) {
-                                                            // Fallback for browsers that don't support showPicker
-                                                            console.log('showPicker not supported');
-                                                        }
-                                                    }}
+                                                    onFocus={(e) => e.target.showPicker?.()}
                                                     className={`w-full h-12 text-base pr-10 ${validationErrors.delivery_date || errors.delivery_date ? 'border-red-500' : ''}`}
                                                     min={getTodayDate()}
                                                 />
@@ -1865,21 +2104,33 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
 
                                 {/* Mode of Delivery */}
                                 <div className="space-y-3">
-                                    <Label className="text-base font-medium">Mode</Label>
-                                    <RadioGroup 
-                                        value={data.delivery_mode} 
-                                        onValueChange={(value) => setData('delivery_mode', value)}
-                                        className="flex flex-col space-y-3"
-                                    >
+                                    <label className="block text-base font-medium text-gray-700">Mode</label>
+                                    <div className="flex flex-col space-y-3">
                                         <div className="flex items-center space-x-3">
-                                            <RadioGroupItem value="pick_up" id="pick_up" className="w-5 h-5" />
-                                            <Label htmlFor="pick_up" className="cursor-pointer text-base">Pick up</Label>
+                                            <input
+                                                type="radio"
+                                                id="pick_up"
+                                                name="delivery_mode"
+                                                value="pick_up"
+                                                checked={data.delivery_mode === 'pick_up'}
+                                                onChange={(e) => setData('delivery_mode', e.target.value)}
+                                                className="custom-radio"
+                                            />
+                                            <label htmlFor="pick_up" className="cursor-pointer text-base text-gray-700">Pick up</label>
                                         </div>
                                         <div className="flex items-center space-x-3">
-                                            <RadioGroupItem value="deliver" id="deliver" className="w-5 h-5" />
-                                            <Label htmlFor="deliver" className="cursor-pointer text-base">Deliver</Label>
+                                            <input
+                                                type="radio"
+                                                id="deliver"
+                                                name="delivery_mode"
+                                                value="deliver"
+                                                checked={data.delivery_mode === 'deliver'}
+                                                onChange={(e) => setData('delivery_mode', e.target.value)}
+                                                className="custom-radio"
+                                            />
+                                            <label htmlFor="deliver" className="cursor-pointer text-base text-gray-700">Deliver</label>
                                         </div>
-                                    </RadioGroup>
+                                    </div>
                                 </div>
 
                                 {/* Submit Button */}
@@ -1909,46 +2160,56 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                             <h3 className="text-xl font-semibold mb-6">Order Preview</h3>
                             <div className="space-y-4">
                                 <div>
-                                    <Label className="text-base font-medium">Customer Name</Label>
-                                    <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                    <Label className="text-base font-medium text-gray-700">Customer Name</Label>
+                                    <div className="text-base text-gray-900 mt-1">
                                         {data.customer_name || 'Name'}
                                     </div>
                                 </div>
 
                                 <div>
-                                    <Label className="text-base font-medium">Address</Label>
-                                    <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                    <Label className="text-base font-medium text-gray-700">Address</Label>
+                                    <div className="text-base text-gray-900 mt-1">
                                         {data.address || 'Address'}
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <Label className="text-base font-medium">Quantity</Label>
-                                        <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                        <Label className="text-base font-medium text-gray-700">Quantity</Label>
+                                        <div className="text-base text-gray-900 mt-1">
                                             {data.quantity || 'Quantity'}
                                         </div>
                                     </div>
                                     <div>
-                                        <Label className="text-base font-medium">Size</Label>
-                                        <div className="text-base text-gray-600 bg-white p-3 rounded border">
-                                            {data.size || 'Size'}
+                                        <Label className="text-base font-medium text-gray-700">Size</Label>
+                                        <div className="text-base text-gray-900 mt-1">
+                                            {data.size ? (() => {
+                                                const lastHyphenIndex = data.size.lastIndexOf('-');
+                                                const productName = lastHyphenIndex > -1 ? data.size.substring(0, lastHyphenIndex) : '';
+                                                const size = lastHyphenIndex > -1 ? data.size.substring(lastHyphenIndex + 1) : data.size;
+                                                
+                                                if (productName && productName !== '' && productName !== 'undefined') {
+                                                    return `${productName} - ${size.charAt(0).toUpperCase() + size.slice(1)}`;
+                                                } else {
+                                                    return size.charAt(0).toUpperCase() + size.slice(1);
+                                                }
+                                            })() : 'Size'}
                                         </div>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <Label className="text-base font-medium">Date</Label>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <Label className="text-base font-medium text-gray-700">Date</Label>
+                                    <div className="grid grid-cols-2 gap-3 mt-1">
                                         <div>
                                             <div className="text-sm text-gray-500">Order Date</div>
-                                            <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                            <div className="text-base text-gray-900">
                                                 {data.order_date || '00/00/00'}
                                             </div>
                                         </div>
                                         <div>
-                                            <div className="text-sm text-gray-500">Delivery/Pick-Up Date</div>
-                                            <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                            <div className="text-sm text-gray-500">Delivery Date</div>
+                                            <div className="text-base text-gray-900">
                                                 {data.delivery_date || '00/00/00'}
                                             </div>
                                         </div>
@@ -1956,28 +2217,28 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                 </div>
 
                                 <div>
-                                    <Label className="text-base font-medium">Mode</Label>
-                                    <div className="text-base text-gray-600 mt-2">
-                                        <div className="flex items-center space-x-3 mt-2">
-                                            <div className={`w-3 h-3 rounded-full ${data.delivery_mode === 'pick_up' ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
-                                            <span className={`text-base ${data.delivery_mode === 'pick_up' ? 'font-medium' : ''}`}>Pick up</span>
-                                        </div>
-                                        <div className={`flex items-center space-x-3 mt-2`}>
-                                            <div className={`w-3 h-3 rounded-full ${data.delivery_mode === 'deliver' ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
-                                            <span className={`text-base ${data.delivery_mode === 'deliver' ? 'font-medium' : ''}`}>Deliver</span>
-                                        </div>
+                                    <Label className="text-base font-medium text-gray-700">Mode</Label>
+                                    <div className="text-base text-gray-900 mt-1">
+                                        {data.delivery_mode === 'pick_up' ? 'Pick up' : 'Deliver'}
                                     </div>
                                 </div>
 
                                 {/* Show who will be the delivery rider */}
                                 {data.delivery_mode === 'deliver' && (
                                     <div>
-                                        <Label className="text-base font-medium">Delivery Rider</Label>
-                                        <div className="text-base text-gray-600 bg-white p-3 rounded border">
+                                        <Label className="text-base font-medium text-gray-700">Delivery Rider</Label>
+                                        <div className="text-base text-gray-900 mt-1">
                                             {user.name} (You)
                                         </div>
                                     </div>
                                 )}
+
+                                <div>
+                                    <Label className="text-base font-medium text-gray-700">Total</Label>
+                                    <div className="text-lg font-bold text-gray-700 mt-1">
+                                        ₱{calculatedTotal.toFixed(2)}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2189,7 +2450,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                     value={cancellationReason}
                                     onChange={(e) => setCancellationReason(e.target.value)}
                                     placeholder="Enter the reason for cancelling this job order..."
-                                    className="mt-1"
+                                    className="mt-1 text-gray-900 bg-white border-gray-300 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500"
                                     rows={3}
                                     required
                                 />
@@ -2227,7 +2488,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                     <DialogHeader>
                         <DialogTitle className="text-red-600">Cancel Order</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to cancel order #{orderToCancel?.order_id} for {orderToCancel?.customer_name}?
+                            Are you sure you want to cancel order #{orderToCancel?.formatted_order_id || `OR-${String(orderToCancel?.order_id || '').padStart(4, '0')}`} for {orderToCancel?.customer_name}?
                             <br />
                             Please provide a reason for cancellation.
                         </DialogDescription>
@@ -2240,7 +2501,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                 placeholder="Please explain why this order is being cancelled..."
                                 value={orderCancellationReason}
                                 onChange={(e) => setOrderCancellationReason(e.target.value)}
-                                className="mt-1"
+                                className="mt-1 text-gray-900 bg-white border-gray-300 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500"
                                 rows={3}
                             />
                         </div>

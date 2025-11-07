@@ -56,6 +56,8 @@ interface Maintenance {
     cost?: number;
     created_at: string;
     updated_at: string;
+    equipment_status_at_maintenance?: string;
+    equipment_broken_reason_at_maintenance?: string;
 }
 
 interface MaintenanceFormData {
@@ -1481,6 +1483,20 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                                     <div className="mt-2">
                                                         <span className="font-medium text-gray-700">Description:</span>
                                                         <p className="text-sm text-gray-600 mt-1">{maintenance.description}</p>
+                                                    </div>
+                                                )}
+                                                {/* Show historical equipment status at time of maintenance */}
+                                                {maintenance.equipment_status_at_maintenance && (
+                                                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                                                        <div className="text-xs font-medium text-blue-800">Equipment Status During Maintenance:</div>
+                                                        <div className="text-sm text-blue-700 capitalize">
+                                                            {maintenance.equipment_status_at_maintenance.replace('_', ' ')}
+                                                        </div>
+                                                        {maintenance.equipment_broken_reason_at_maintenance && (
+                                                            <div className="text-xs text-blue-600 mt-1">
+                                                                Reason: {maintenance.equipment_broken_reason_at_maintenance}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                                 <div className="text-xs text-gray-500 mt-2">

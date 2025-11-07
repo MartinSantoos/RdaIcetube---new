@@ -73,7 +73,9 @@ class EquipmentController extends Controller
             'cost' => 'nullable|numeric|min:0',
         ]);
 
-        // Create the maintenance record 
+        $equipment = Equipment::findOrFail($request->equipment_id);
+
+        // Create the maintenance record with equipment status snapshot
         $maintenance = Maintenance::create([
             'equipment_id' => $request->equipment_id,
             'maintenance_type' => $request->maintenance_type,
@@ -81,9 +83,10 @@ class EquipmentController extends Controller
             'description' => $request->description,
             'maintenance_date' => $request->maintenance_date,
             'cost' => $request->cost,
+            'equipment_status_at_maintenance' => $equipment->status,
+            'equipment_broken_reason_at_maintenance' => $equipment->broken_reason,
         ]);
 
-        $equipment = Equipment::findOrFail($request->equipment_id);
         $equipment->update(['status' => 'under_maintenance']);
 
         // Log the activity
@@ -117,7 +120,8 @@ class EquipmentController extends Controller
         // Update maintenance status to completed
         $maintenance->update(['status' => 'completed']);
         
-        // Check if there are any other scheduled maintenances for this equipment
+        // Check if there are any other active maintenances for this equipment
+        // Note: 'broken' maintenance records are not considered active and remain as historical records
         $pendingMaintenance = Maintenance::where('equipment_id', $equipment->id)
             ->whereIn('status', ['scheduled', 'in_progress'])
             ->exists();
@@ -154,10 +158,11 @@ class EquipmentController extends Controller
     {
         $equipment = Equipment::findOrFail($id);
         
-        // Update equipment status
+        // Update equipment status (but keep broken_reason as historical record)
         $equipment->update(['status' => 'operational']);
         
-       
+        // Only update scheduled and in_progress maintenance to completed
+        // NEVER update broken maintenance records - they must remain as historical records
         Maintenance::where('equipment_id', $id)
             ->whereIn('status', ['scheduled', 'in_progress'])
             ->update(['status' => 'completed']);
@@ -200,10 +205,14 @@ class EquipmentController extends Controller
             'broken_reason' => $request->reason
         ]);
         
-        // Cancel any ongoing maintenance
+        // Mark any ongoing maintenance as broken and capture equipment status snapshot
         Maintenance::where('equipment_id', $id)
             ->whereIn('status', ['scheduled', 'in_progress'])
-            ->update(['status' => 'cancelled']);
+            ->update([
+                'status' => 'broken',
+                'equipment_status_at_maintenance' => 'broken',
+                'equipment_broken_reason_at_maintenance' => $request->reason
+            ]);
 
         // Log the activity
         if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
