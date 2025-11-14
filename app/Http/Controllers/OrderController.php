@@ -326,12 +326,9 @@ class OrderController extends Controller
     {
         $user = auth()->user();
         
-        // Get orders assigned to this employee (delivery rider) OR pickup orders (accessible by all employees)
+        // Get only orders assigned to this employee (delivery rider)
         $orders = Order::with('deliveryRider')
-            ->where(function($query) use ($user) {
-                $query->where('delivery_rider_id', $user->id) // Orders assigned to this employee
-                      ->orWhere('delivery_mode', 'pick_up');     // OR pickup orders (accessible by all employees)
-            })
+            ->where('delivery_rider_id', $user->id) // Only orders assigned to this employee
             ->where('archived', false)
             ->orderBy('created_at', 'desc')
             ->get();

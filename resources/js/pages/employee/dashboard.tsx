@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { BarChart3, ShoppingCart, User, LogOut, Truck, Menu, X, Settings, Package } from 'lucide-react';
+import { BarChart3, ShoppingCart, User, LogOut, Truck, Menu, X, Settings, Package, Monitor } from 'lucide-react';
 import { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -162,6 +162,14 @@ export default function EmployeeDashboard({ user, stats, due_today_orders, recen
                                 >
                                     <ShoppingCart className="w-5 h-5" />
                                     <span>Orders</span>
+                                </Link>
+                                <Link 
+                                    href="/employee/product-monitoring" 
+                                    className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
+                                >
+                                    <Monitor className="w-5 h-5" />
+                                    <span>Product Monitoring</span>
                                 </Link>
                             </nav>
                         </div>

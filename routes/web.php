@@ -389,6 +389,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('employee/orders/{order}/complete-with-photo', [App\Http\Controllers\OrderController::class, 'completeOrderWithPhoto'])
         ->name('employee.orders.complete-with-photo')->middleware('check.employee');
+    
+    // Complete pickup order (no photo required)
+    Route::patch('employee/orders/{order}/complete', [App\Http\Controllers\OrderController::class, 'employeeUpdateStatus'])
+        ->name('employee.orders.complete')->middleware('check.employee');
 
     // Employee Job Orders
     Route::patch('employee/job-orders/{jobOrderId}/status', [App\Http\Controllers\OrderController::class, 'employeeUpdateJobOrderStatus'])
@@ -403,6 +407,40 @@ Route::middleware(['auth'])->group(function () {
     
     Route::patch('employee/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('employee.settings.profile')->middleware('check.employee');
+    
+    // Employee Product Monitoring - Shows pending pickup orders
+    Route::get('employee/product-monitoring', function () {
+        $user = Auth::user();
+        
+        // Get all pending pickup orders
+        $pendingPickupOrders = \App\Models\Order::where('status', 'pending')
+            ->where('delivery_mode', 'pick_up')
+            ->with(['deliveryRider:id,name'])
+            ->orderBy('created_at', 'asc')
+            ->get(['order_id', 'customer_name', 'contact_number', 'size', 'quantity', 'total', 'created_at', 'delivery_rider_id', 'address']);
+        
+        // Calculate stats
+        $totalPickupOrders = $pendingPickupOrders->count();
+        $totalQuantity = $pendingPickupOrders->sum('quantity');
+        $totalValue = $pendingPickupOrders->sum('total');
+        
+        // Get today's stats
+        $today = \Carbon\Carbon::today();
+        $todayPickupOrders = \App\Models\Order::where('delivery_mode', 'pick_up')
+            ->whereDate('created_at', $today)
+            ->count();
+        
+        return Inertia::render('employee/product-monitoring', [
+            'user' => $user,
+            'pendingOrders' => $pendingPickupOrders,
+            'stats' => [
+                'total_pending' => $totalPickupOrders,
+                'total_quantity' => $totalQuantity,
+                'total_value' => $totalValue,
+                'today_orders' => $todayPickupOrders
+            ]
+        ]);
+    })->name('employee.product-monitoring')->middleware('check.employee');
 });
 
 // Admin Product Monitoring (Public Access for Display Screens - No Authentication Required)

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Package, ShoppingCart, User, LogOut, Eye, Check, Truck, Search, Filter, Calendar, MoreHorizontal, Menu, X, Camera, Upload, Plus, Settings, BarChart3, Clock, Play, CheckCircle } from 'lucide-react';
+import { Package, ShoppingCart, User, LogOut, Eye, Check, Truck, Search, Filter, Calendar, MoreHorizontal, Menu, X, Camera, Upload, Plus, Settings, BarChart3, Clock, Play, CheckCircle, Monitor } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -685,12 +685,9 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
 
     // Effects
     useEffect(() => {
-        if (data.delivery_mode === 'pick_up') {
-            setData('delivery_rider_id', '');
-        } else {
-            setData('delivery_rider_id', user.id.toString());
-        }
-    }, [data.delivery_mode, user.id]);
+        // Always set delivery rider to current employee since we only handle delivery orders
+        setData('delivery_rider_id', user.id.toString());
+    }, [user.id]);
 
     useEffect(() => {
         if (showSuccess) {
@@ -824,7 +821,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                 </div>
             </header>
 
-            <div className="flex relative">
+            <div className="flex relative overflow-hidden">
                 {/* Mobile Sidebar Overlay */}
                 {isMobile && sidebarOpen && (
                     <div 
@@ -875,6 +872,14 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                     <ShoppingCart className="w-5 h-5" />
                                     <span>Orders</span>
                                 </Link>
+                                <Link 
+                                    href="/employee/product-monitoring" 
+                                    className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
+                                >
+                                    <Monitor className="w-5 h-5" />
+                                    <span>Product Monitoring</span>
+                                </Link>
                             </nav>
                         </div>
 
@@ -905,7 +910,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                 </aside>
 
                 {/* Main Content */}
-                <main className={`flex-1 p-4 md:p-8 bg-gray-50 ${isMobile ? 'w-full' : 'ml-64'}`}>
+                <main className={`flex-1 p-4 md:p-8 bg-gray-50 ${isMobile ? 'w-full' : 'ml-64'} min-w-0 overflow-hidden`}>
                     {/* Page Header */}
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <div className="flex items-center justify-between">
@@ -988,7 +993,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
 
                         <TabsContent value="orders">
                             {/* Orders Section */}
-                            <div className="bg-white rounded-lg shadow-md">
+                            <div className="bg-white rounded-lg shadow-md overflow-hidden">
                                 <div className="p-6 border-b border-gray-200">
                                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                                         {/* Search */}
@@ -1036,20 +1041,20 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                         {/* Orders Table - Desktop */}
                         <div className="hidden md:block">
                             <div className="overflow-x-auto">
-                                <Table className="w-full">
+                                <Table className="min-w-full">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead className="font-semibold w-[8%]">Status</TableHead>
-                                            <TableHead className="font-semibold w-[6%]">Order ID</TableHead>
-                                            <TableHead className="font-semibold w-[15%]">Customer</TableHead>
-                                            <TableHead className="font-semibold w-[18%]">Address</TableHead>
-                                            <TableHead className="font-semibold w-[8%]">Size</TableHead>
-                                            <TableHead className="font-semibold w-[7%]">Quantity</TableHead>
-                                            <TableHead className="font-semibold w-[10%]">Mode</TableHead>
-                                            <TableHead className="font-semibold w-[9%]">Order Date</TableHead>
-                                            <TableHead className="font-semibold w-[9%]">Delivery/Pick-Up Date</TableHead>
-                                            <TableHead className="font-semibold w-[8%]">Total</TableHead>
-                                            <TableHead className="font-semibold w-[2%]">Actions</TableHead>
+                                            <TableHead className="font-semibold w-[100px]">Status</TableHead>
+                                            <TableHead className="font-semibold w-[80px]">Order ID</TableHead>
+                                            <TableHead className="font-semibold w-[150px]">Customer</TableHead>
+                                            <TableHead className="font-semibold w-[200px]">Address</TableHead>
+                                            <TableHead className="font-semibold w-[80px]">Size</TableHead>
+                                            <TableHead className="font-semibold w-[80px]">Quantity</TableHead>
+                                            <TableHead className="font-semibold w-[100px]">Mode</TableHead>
+                                            <TableHead className="font-semibold w-[100px]">Order Date</TableHead>
+                                            <TableHead className="font-semibold w-[120px]">Delivery/Pick-Up Date</TableHead>
+                                            <TableHead className="font-semibold w-[100px]">Total</TableHead>
+                                            <TableHead className="font-semibold w-[60px]">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1074,7 +1079,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                                     <TableCell className="text-sm p-2">{order.quantity}</TableCell>
                                                     <TableCell className="capitalize text-sm break-words p-2">
                                                         <span className="capitalize">
-                                                            {order.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}
+                                                            Deliver
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-sm p-2">{formatDate(order.order_date)}</TableCell>
@@ -1207,7 +1212,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                             </div>
                                             <div>
                                                 <span className="text-gray-700">Mode:</span>
-                                                <div className="font-medium text-gray-800 capitalize">{order.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}</div>
+                                                <div className="font-medium text-gray-800 capitalize">Deliver</div>
                                             </div>
                                             <div>
                                                 <span className="text-gray-700">Order Date:</span>
@@ -1233,12 +1238,12 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                 </div>
                             )}
                         </div>
-                    </div>
+                            </div>
                         </TabsContent>
 
                         <TabsContent value="job-orders">
                             {/* Job Orders Section */}
-                            <div className="bg-white rounded-lg shadow-md">
+                            <div className="bg-white rounded-lg shadow-md overflow-hidden">
                                 <div className="p-6 border-b border-gray-200">
                                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                                         {/* Search */}
@@ -1378,17 +1383,17 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
 
                                 {/* Job Orders Table */}
                                 <div className="hidden md:block overflow-x-auto">
-                                    <Table>
+                                    <Table className="min-w-full">
                                         <TableHeader>
                                             <TableRow className="bg-gray-50">
-                                                <TableHead className="font-semibold text-gray-700">Job Order #</TableHead>
-                                                <TableHead className="font-semibold text-gray-700">Product</TableHead>
-                                                <TableHead className="font-semibold text-gray-700">Size</TableHead>
-                                                <TableHead className="font-semibold text-gray-700">Quantity</TableHead>
-                                                <TableHead className="font-semibold text-gray-700">Status</TableHead>
-                                                <TableHead className="font-semibold text-gray-700">Production Date</TableHead>
-                                                <TableHead className="font-semibold text-gray-700">Created By</TableHead>
-                                                <TableHead className="font-semibold text-gray-700">Actions</TableHead>
+                                                <TableHead className="font-semibold text-gray-700 w-[120px]">Job Order #</TableHead>
+                                                <TableHead className="font-semibold text-gray-700 w-[150px]">Product</TableHead>
+                                                <TableHead className="font-semibold text-gray-700 w-[100px]">Size</TableHead>
+                                                <TableHead className="font-semibold text-gray-700 w-[100px]">Quantity</TableHead>
+                                                <TableHead className="font-semibold text-gray-700 w-[120px]">Status</TableHead>
+                                                <TableHead className="font-semibold text-gray-700 w-[140px]">Production Date</TableHead>
+                                                <TableHead className="font-semibold text-gray-700 w-[120px]">Created By</TableHead>
+                                                <TableHead className="font-semibold text-gray-700 w-[100px]">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -1516,7 +1521,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                     </div>
                                     <div>
                                         <span className="text-xs text-gray-500">Mode</span>
-                                        <p className="font-semibold text-sm">{selectedOrder.delivery_mode === 'pick_up' ? 'Pick Up' : 'Deliver'}</p>
+                                        <p className="font-semibold text-sm">Deliver</p>
                                     </div>
                                     <div>
                                         <span className="text-xs text-gray-500">Order Date</span>
@@ -2109,26 +2114,26 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                         <div className="flex items-center space-x-3">
                                             <input
                                                 type="radio"
-                                                id="pick_up"
-                                                name="delivery_mode"
-                                                value="pick_up"
-                                                checked={data.delivery_mode === 'pick_up'}
-                                                onChange={(e) => setData('delivery_mode', e.target.value)}
-                                                className="custom-radio"
-                                            />
-                                            <label htmlFor="pick_up" className="cursor-pointer text-base text-gray-700">Pick up</label>
-                                        </div>
-                                        <div className="flex items-center space-x-3">
-                                            <input
-                                                type="radio"
                                                 id="deliver"
                                                 name="delivery_mode"
                                                 value="deliver"
                                                 checked={data.delivery_mode === 'deliver'}
-                                                onChange={(e) => setData('delivery_mode', e.target.value)}
+                                                onChange={(e) => setData('delivery_mode', e.target.value as 'deliver' | 'pick_up')}
                                                 className="custom-radio"
                                             />
                                             <label htmlFor="deliver" className="cursor-pointer text-base text-gray-700">Deliver</label>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <input
+                                                type="radio"
+                                                id="pick_up"
+                                                name="delivery_mode"
+                                                value="pick_up"
+                                                checked={data.delivery_mode === 'pick_up'}
+                                                onChange={(e) => setData('delivery_mode', e.target.value as 'deliver' | 'pick_up')}
+                                                className="custom-radio"
+                                            />
+                                            <label htmlFor="pick_up" className="cursor-pointer text-base text-gray-700">Pick up</label>
                                         </div>
                                     </div>
                                 </div>
@@ -2219,7 +2224,7 @@ export default function EmployeeOrders({ user, orders, inventory = [], jobOrders
                                 <div>
                                     <Label className="text-base font-medium text-gray-700">Mode</Label>
                                     <div className="text-base text-gray-900 mt-1">
-                                        {data.delivery_mode === 'pick_up' ? 'Pick up' : 'Deliver'}
+                                        {data.delivery_mode === 'deliver' ? 'Deliver' : 'Pick up'}
                                     </div>
                                 </div>
 

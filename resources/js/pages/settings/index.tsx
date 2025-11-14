@@ -97,6 +97,7 @@ export default function SettingsPage({ user }: SettingsProps) {
             return [
                 { href: '/employee/dashboard', icon: BarChart3, label: 'Dashboard' },
                 { href: '/employee/orders', icon: ShoppingCart, label: 'Orders' },
+                { href: '/employee/product-monitoring', icon: Monitor, label: 'Product Monitoring' },
             ];
         }
     };

@@ -136,7 +136,7 @@
         
         <div class="receipt-details">
             <div class="detail-row">
-                <span><strong>Invoice#:</strong></span>
+                <span><strong>Order#:</strong></span>
                 <span>{{ $order->order_id }}</span>
             </div>
             <div class="detail-row">
