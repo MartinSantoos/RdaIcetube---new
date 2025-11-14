@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Head, router } from '@inertiajs/react';
-import { Package, TrendingUp, Factory, Clock, Truck } from 'lucide-react';
+import { Package, TrendingUp, Factory, Clock, Truck, ArrowLeft } from 'lucide-react';
 
 interface ProductionData {
     size: string;

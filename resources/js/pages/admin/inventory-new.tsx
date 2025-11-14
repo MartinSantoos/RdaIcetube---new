@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { Package, Plus, AlertTriangle, CheckCircle, X, Search, Download, BarChart3, Cog, Settings, LogOut, Home, ShoppingCart, ClipboardList, Users, Menu, Trash2, Archive, RotateCcw, MoreHorizontal, Edit, Clock, Play, Square, Eye, Calendar } from 'lucide-react';
+import { Package, Plus, AlertTriangle, CheckCircle, X, Search, Download, BarChart3, Cog, Settings, LogOut, Home, ShoppingCart, ClipboardList, Users, Menu, Trash2, Archive, RotateCcw, MoreHorizontal, Edit, Clock, Play, Square, Eye, Calendar, Monitor } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -909,13 +909,23 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                                     <Cog className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
+                                <a 
+                                    href="/admin/product-monitoring" 
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
+                                >
+                                    <Monitor className="w-5 h-5" />
+                                    <span>Product Monitoring</span>
+                                </a>
                                 <Link 
                                     href="/admin/sales-report" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <BarChart3 className="w-5 h-5" />
-                                    <span>Sales Report</span>
+                                    <span>Sales Summary</span>
                                 </Link>
                             </nav>
                         </div>
@@ -965,7 +975,7 @@ export default function InventoryWorking({ user, inventory = [], archivedInvento
                         <div className="flex flex-col space-y-4 md:space-y-0 md:flex-row md:items-center justify-between">
                             <div>
                                 <h1 className="text-2xl md:text-3xl font-bold mb-2">Inventory</h1>
-                                <p className="text-blue-100 text-sm md:text-base">Manage products and track stock levels - Stock automatically updates through job orders</p>
+                                <p className="text-blue-100 text-sm md:text-base">Manage products and job orders</p>
                             </div>
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                                 <Button 

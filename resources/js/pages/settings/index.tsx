@@ -90,7 +90,8 @@ export default function SettingsPage({ user }: SettingsProps) {
                 { href: '/admin/inventory', icon: Package, label: 'Inventory' },
                 { href: '/admin/employees', icon: Users, label: 'Employees' },
                 { href: '/admin/equipment', icon: Cog, label: 'Equipment' },
-                { href: '/admin/sales-report', icon: BarChart3, label: 'Sales Report' },
+                { href: '/admin/product-monitoring', icon: Monitor, label: 'Product Monitoring' },
+                { href: '/admin/sales-report', icon: BarChart3, label: 'Sales Summary' },
             ];
         } else {
             return [
@@ -234,20 +235,6 @@ export default function SettingsPage({ user }: SettingsProps) {
                                         <Phone className="w-4 h-4 mr-2 text-gray-400" />
                                         <span>{user.contact_number || 'No contact number'}</span>
                                     </div>
-                                        
-                                    {/* Product Monitoring Button - Only for Admin */}
-                                    {user.user_type === 1 && (
-                                        <div className="pt-2">
-                                            <Button
-                                                onClick={() => window.open('/admin/product-monitoring', '_blank')}
-                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                                                size="sm"
-                                            >
-                                                <Monitor className="w-4 h-4 mr-2" />
-                                                Product Monitoring
-                                            </Button>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>

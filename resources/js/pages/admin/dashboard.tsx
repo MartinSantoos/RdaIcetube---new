@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { BarChart3, Package, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X, Clock, User } from 'lucide-react';
+import { BarChart3, Package, Settings, ShoppingCart, TrendingUp, Users, Filter, LogOut, AlertTriangle, Menu, X, Clock, User, Monitor } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -315,13 +315,23 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                     <Settings className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
+                                <a 
+                                    href="/admin/product-monitoring" 
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
+                                >
+                                    <Monitor className="w-5 h-5" />
+                                    <span>Product Monitoring</span>
+                                </a>
                                 <Link 
                                     href="/admin/sales-report" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <BarChart3 className="w-5 h-5" />
-                                    <span>Sales Report</span>
+                                    <span>Sales Summary</span>
                                 </Link>
                             </nav>
                         </div>
@@ -514,18 +524,18 @@ export default function AdminDashboard({ user, orderStats, inventoryStats, sales
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center space-x-2">
+                                <div className="relative">
                                     <select
                                         value={selectedSalesPeriod}
                                         onChange={(e) => handleSalesPeriodChange(e.target.value as 'today' | 'week' | 'month' | 'year')}
-                                        className="px-4 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100 hover:bg-gray-200 cursor-pointer"
-                                        style={{ color: '#111827', backgroundColor: 'gray-100' }}
+                                        className="appearance-none bg-gray-100 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[120px]"
                                     >
                                         <option value="today">Today</option>
                                         <option value="week">This Week</option>
                                         <option value="month">This Month</option>
                                         <option value="year">This Year</option>
                                     </select>
+                                    <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
                                 </div>
                             </div>
                             

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
-import { BarChart3, Package, Settings, ShoppingCart, Users, LogOut, Search, Download, Menu, X, Calendar, TrendingUp, Eye, FileText, FileSpreadsheet } from 'lucide-react';
+import { BarChart3, Package, Settings, ShoppingCart, Users, LogOut, Search, Download, Menu, X, Calendar, TrendingUp, Eye, FileText, FileSpreadsheet, Monitor, Filter } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,6 +69,9 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
     const [includeTrends, setIncludeTrends] = useState(true);
     const [exportFormat, setExportFormat] = useState<'pdf' | 'excel'>('pdf');
     const [showPreview, setShowPreview] = useState(false);
+    
+    // Chart filter state
+    const [chartSizeFilter, setChartSizeFilter] = useState<string>('all');
     
     const isMobile = useIsMobile();
     
@@ -176,6 +179,11 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
     const salesMetrics = useMemo(() => {
         const completedOrders = orders.filter(order => order.status === 'completed');
         
+        // Filter orders by chart size filter
+        const chartFilteredOrders = chartSizeFilter === 'all' 
+            ? completedOrders 
+            : completedOrders.filter(order => order.size === chartSizeFilter);
+        
         // Total revenue from completed orders - ensure we handle null/undefined values
         const totalRevenue = completedOrders.reduce((sum, order) => {
             const orderTotal = order.total ? Number(order.total) : 0;
@@ -186,13 +194,13 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
         const uniqueDates = [...new Set(completedOrders.map(order => order.order_date.split('T')[0]))];
         const averageSalePerDay = uniqueDates.length > 0 ? totalRevenue / uniqueDates.length : 0;
 
-        // Monthly sales data for chart (last 12 months)
+        // Monthly sales data for chart (last 12 months) - using filtered orders for chart
         const monthlyData = Array.from({ length: 12 }, (_, i) => {
             const date = new Date();
             date.setMonth(date.getMonth() - (11 - i));
             const monthKey = date.toISOString().slice(0, 7); // YYYY-MM format
             
-            const monthOrders = completedOrders.filter(order => 
+            const monthOrders = chartFilteredOrders.filter(order => 
                 order.order_date.slice(0, 7) === monthKey
             );
             
@@ -225,7 +233,7 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
             monthlyData,
             productSales: sortedProducts
         };
-    }, [orders]);
+    }, [orders, chartSizeFilter]);
 
     // Chart data for monthly sales
     const chartData = {
@@ -386,13 +394,23 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                                     <Settings className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
+                                <a 
+                                    href="/admin/product-monitoring" 
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
+                                >
+                                    <Monitor className="w-5 h-5" />
+                                    <span>Product Monitoring</span>
+                                </a>
                                 <Link 
                                     href="/admin/sales-report" 
                                     className="flex items-center space-x-3 bg-blue-700 px-4 py-3 rounded-lg"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <BarChart3 className="w-5 h-5" />
-                                    <span>Sales Report</span>
+                                    <span>Sales Summary</span>
                                 </Link>
                             </nav>
                         </div>
@@ -429,8 +447,8 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                     <div className="bg-blue-600 text-white rounded-2xl p-4 md:p-8 mb-6 md:mb-8">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div>
-                                <h1 className="text-2xl md:text-3xl font-bold mb-2 text-white">Sales Report</h1>
-                                <p className="text-blue-100 text-sm md:text-base">See your sales report</p>
+                                <h1 className="text-2xl md:text-3xl font-bold mb-2 text-white">Sales Summary</h1>
+                                <p className="text-blue-100 text-sm md:text-base">See your sales summary</p>
                             </div>
                             <div className="flex items-center space-x-3">
                                 <Button 
@@ -467,8 +485,29 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                         {/* Sales Overview Chart */}
                         <div className="lg:col-span-2 bg-white rounded-xl p-4 md:p-6 shadow-sm">
                             <div className="mb-6">
-                                <h3 className="text-lg font-semibold mb-1 text-gray-900">Sales Overview</h3>
-                                <p className="text-sm text-gray-600">Number of transaction per month</p>
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div>
+                                        <h3 className="text-lg font-semibold mb-1 text-gray-900">Sales Overview</h3>
+                                        <p className="text-sm text-gray-600">Number of transaction per month</p>
+                                    </div>
+                                    
+                                    {/* Size Filter */}
+                                    <div className="relative">
+                                        <select 
+                                            value={chartSizeFilter} 
+                                            onChange={(e) => setChartSizeFilter(e.target.value)}
+                                            className="appearance-none bg-gray-100 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[120px]"
+                                        >
+                                            <option value="all">All Sizes</option>
+                                            {availableSizes.map(size => (
+                                                <option key={size} value={size}>
+                                                    {size}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
+                                    </div>
+                                </div>
                             </div>
                             
                             <div className="h-64 sm:h-80 overflow-hidden">

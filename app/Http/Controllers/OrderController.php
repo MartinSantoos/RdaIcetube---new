@@ -326,9 +326,12 @@ class OrderController extends Controller
     {
         $user = auth()->user();
         
-        // Get orders assigned to this employee (delivery rider)
+        // Get orders assigned to this employee (delivery rider) OR pickup orders (accessible by all employees)
         $orders = Order::with('deliveryRider')
-            ->where('delivery_rider_id', $user->id)
+            ->where(function($query) use ($user) {
+                $query->where('delivery_rider_id', $user->id) // Orders assigned to this employee
+                      ->orWhere('delivery_mode', 'pick_up');     // OR pickup orders (accessible by all employees)
+            })
             ->where('archived', false)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -445,9 +448,18 @@ class OrderController extends Controller
         $user = auth()->user();
         
         // For cancellation, allow any employee to cancel (not just assigned one)
+        // For pickup orders, allow any employee to update status (not just assigned one)
         if ($request->status === 'cancelled') {
             $order = Order::where('order_id', $order_id)
                          ->where('archived', false)
+                         ->firstOrFail();
+        } elseif ($request->status === 'completed' || $request->status === 'out_for_delivery') {
+            $order = Order::where('order_id', $order_id)
+                         ->where('archived', false)
+                         ->where(function($query) use ($user) {
+                             $query->where('delivery_rider_id', $user->id) // Orders assigned to this employee
+                                   ->orWhere('delivery_mode', 'pick_up');     // OR pickup orders (accessible by all employees)
+                         })
                          ->firstOrFail();
         } else {
             // For other status updates, ensure it's assigned to this employee
@@ -543,11 +555,15 @@ class OrderController extends Controller
 
         $user = auth()->user();
         
-        // Find the order and ensure it's assigned to this employee and not archived
+        // Find the order and ensure it's either assigned to this employee OR it's a pickup order
+        // and not archived
         $order = Order::where('order_id', $order_id)
-                     ->where('delivery_rider_id', $user->id)
                      ->where('archived', false) // Prevent updates to archived orders
                      ->where('status', 'out_for_delivery') // Only allow completion from out_for_delivery
+                     ->where(function($query) use ($user) {
+                         $query->where('delivery_rider_id', $user->id) // Orders assigned to this employee
+                               ->orWhere('delivery_mode', 'pick_up');     // OR pickup orders (accessible by all employees)
+                     })
                      ->firstOrFail();
         
         $previousStatus = $order->status;

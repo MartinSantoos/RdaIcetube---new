@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { BarChart3, Package, Cog, Settings, ShoppingCart, Users, Plus, Download, X, CheckCircle, Edit, Trash2, UserX, UserCheck, AlertTriangle, Search, LogOut, MoreHorizontal, Menu } from 'lucide-react';
+import { BarChart3, Package, Cog, Settings, ShoppingCart, Users, Plus, Download, X, CheckCircle, Edit, Trash2, UserX, UserCheck, AlertTriangle, Search, LogOut, MoreHorizontal, Menu, Monitor } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -404,13 +404,23 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                                     <Cog className="w-5 h-5" />
                                     <span>Equipment</span>
                                 </Link>
+                                <a 
+                                    href="/admin/product-monitoring" 
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={() => isMobile && setSidebarOpen(false)}
+                                >
+                                    <Monitor className="w-5 h-5" />
+                                    <span>Product Monitoring</span>
+                                </a>
                                 <Link 
                                     href="/admin/sales-report" 
                                     className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
                                     onClick={() => isMobile && setSidebarOpen(false)}
                                 >
                                     <BarChart3 className="w-5 h-5" />
-                                    <span>Sales Report</span>
+                                    <span>Sales Summary</span>
                                 </Link>
                             </nav>
                         </div>
@@ -448,7 +458,7 @@ export default function Employees({ user, employees = [], archivedEmployees = []
                         <div className="flex flex-col space-y-4 md:space-y-0 md:flex-row md:items-center justify-between">
                             <div>
                                 <h1 className="text-2xl md:text-3xl font-bold mb-2">Employees</h1>
-                                <p className="text-blue-100 text-sm md:text-base">Manage and track Employees</p>
+                                <p className="text-blue-100 text-sm md:text-base">Manage Employees</p>
                             </div>
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                                 <Button onClick={() => {

@@ -327,8 +327,11 @@ Route::middleware(['auth'])->group(function () {
     Route::get('employee/dashboard', function () {
         $user = Auth::user();
         
-        // Get all orders assigned to this employee for stats (exclude archived orders)
-        $orders = \App\Models\Order::where('delivery_rider_id', $user->id)
+        // Get all orders assigned to this employee OR pickup orders for stats (exclude archived orders)
+        $orders = \App\Models\Order::where(function($query) use ($user) {
+                $query->where('delivery_rider_id', $user->id) // Orders assigned to this employee
+                      ->orWhere('delivery_mode', 'pick_up');     // OR pickup orders (accessible by all employees)
+            })
             ->where('archived', false)
             ->get();
         
@@ -340,7 +343,10 @@ Route::middleware(['auth'])->group(function () {
         
         // Get orders due today (orders with delivery_date = today that are not completed and not archived)
         // Use database query for proper date filtering
-        $dueTodayOrders = \App\Models\Order::where('delivery_rider_id', $user->id)
+        $dueTodayOrders = \App\Models\Order::where(function($query) use ($user) {
+                $query->where('delivery_rider_id', $user->id) // Orders assigned to this employee
+                      ->orWhere('delivery_mode', 'pick_up');     // OR pickup orders (accessible by all employees)
+            })
             ->where('archived', false) // Exclude archived orders
             ->whereIn('status', ['pending', 'out_for_delivery'])
             ->whereDate('delivery_date', now()->toDateString())
@@ -349,7 +355,10 @@ Route::middleware(['auth'])->group(function () {
             ->get();
             
         // Get recent orders (latest 5, exclude archived)
-        $recentOrders = \App\Models\Order::where('delivery_rider_id', $user->id)
+        $recentOrders = \App\Models\Order::where(function($query) use ($user) {
+                $query->where('delivery_rider_id', $user->id) // Orders assigned to this employee
+                      ->orWhere('delivery_mode', 'pick_up');     // OR pickup orders (accessible by all employees)
+            })
             ->where('archived', false) // Exclude archived orders
             ->orderBy('created_at', 'desc')
             ->take(5)
