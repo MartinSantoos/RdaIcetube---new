@@ -64,6 +64,7 @@ interface Order {
     total: number;
     delivery_photo?: string;
     delivery_rider_id?: number;
+    completed_by?: string;
     cancellation_reason?: string;
     cancelled_at?: string;
     deliveryRider?: {
@@ -548,8 +549,8 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
 
     // Check if user can complete a delivery order
     const canCompleteDeliveryOrder = (order: Order) => {
-        // If it's not a delivery order, anyone can complete it
-        if (order.delivery_mode !== 'deliver') {
+        // For pickup orders, any admin or employee can complete them
+        if (order.delivery_mode === 'pick_up') {
             return true;
         }
         
@@ -559,14 +560,18 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
             return false;
         }
         
-        // Employee (user_type 2) can only complete if they are the assigned delivery rider
+        // Employee (user_type 2) can only complete delivery orders if they are the assigned delivery rider
         return order.delivery_rider_id === user.id;
     };
 
     const handleStatusUpdate = (orderId: number, newStatus: string) => {
+        console.log('Attempting to update order:', orderId, 'to status:', newStatus);
+        
         // If trying to complete an order, check permissions
         if (newStatus === 'completed') {
             const order = orders.find(o => o.order_id === orderId);
+            console.log('Order found:', order);
+            console.log('Can complete:', order ? canCompleteDeliveryOrder(order) : 'no order');
             if (order && !canCompleteDeliveryOrder(order)) {
                 // Show error message or prevent action
                 alert('Only the assigned delivery rider can complete delivery orders.');
@@ -584,10 +589,30 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
             }
         }
         
+        console.log('Making PATCH request to:', `/admin/orders/${orderId}/status`);
+        console.log('Request data:', { status: newStatus });
+        console.log('User info:', user);
+        
         router.patch(`/admin/orders/${orderId}/status`, {
             status: newStatus,
         }, {
             preserveScroll: true,
+            onStart: () => {
+                console.log('Request started');
+            },
+            onProgress: () => {
+                console.log('Request in progress');
+            },
+            onSuccess: (response) => {
+                console.log('Order status updated successfully', response);
+            },
+            onError: (errors) => {
+                console.error('Error updating order status:', errors);
+                alert('Error: ' + JSON.stringify(errors));
+            },
+            onFinish: () => {
+                console.log('Request finished');
+            }
         });
     };
 
@@ -2200,6 +2225,15 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         <span className="text-xs text-gray-500">Total</span>
                                         <p className="font-semibold text-base">₱{selectedOrder.total ? parseFloat(selectedOrder.total.toString()).toFixed(2) : '0.00'}</p>
                                     </div>
+                                    {/* Show completed by info for completed orders */}
+                                    {selectedOrder.status === 'completed' && (
+                                        <div>
+                                            <span className="text-xs text-gray-500">Completed By</span>
+                                            <p className="font-semibold text-sm">
+                                                {selectedOrder.completed_by || 'Unknown'}
+                                            </p>
+                                        </div>
+                                    )}
                                     {/* Show delivery employee info for delivery orders */}
                                     {selectedOrder.delivery_mode === 'deliver' && (selectedOrder.deliveryRider || selectedOrder.delivery_rider) && (
                                         <div>

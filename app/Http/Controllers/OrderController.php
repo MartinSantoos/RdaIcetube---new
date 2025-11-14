@@ -90,6 +90,12 @@ class OrderController extends Controller
      */
     public function updateStatus(Request $request, $order_id)
     {
+        \Log::info('Order status update attempt', [
+            'order_id' => $order_id,
+            'status' => $request->status,
+            'user_id' => auth()->id()
+        ]);
+
         $request->validate([
             'status' => 'required|string|in:pending,out_for_delivery,completed,cancelled',
             'cancellation_reason' => 'required_if:status,cancelled|nullable|string|max:500'
@@ -114,6 +120,17 @@ class OrderController extends Controller
             if ($request->status === 'cancelled') {
                 $updates['cancelled_at'] = now();
                 $updates['cancellation_reason'] = $request->cancellation_reason;
+            }
+            
+            // Track who completed pickup orders
+            if ($request->status === 'completed' && $order->delivery_mode === 'pick_up') {
+                $authUser = auth()->user();
+                $completedBy = $authUser ? $authUser->name : 'Unknown User';
+                \Log::info('Completion tracking', [
+                    'completed_by' => $completedBy,
+                    'request_data' => $request->all()
+                ]);
+                $updates['completed_by'] = $completedBy;
             }
             
             $order->update($updates);
@@ -484,15 +501,15 @@ class OrderController extends Controller
             $updateData['delivery_photo'] = $deliveryPhotoPath;
         }
         
-        // Track who completed the order
-        if ($request->status === 'completed') {
-            $updateData['completed_by'] = $user->id;
-        }
-        
         // Handle cancellation data
         if ($request->status === 'cancelled') {
             $updateData['cancellation_reason'] = $request->cancellation_reason;
             $updateData['cancelled_at'] = now();
+        }
+        
+        // Track who completed pickup orders
+        if ($request->status === 'completed' && $order->delivery_mode === 'pick_up') {
+            $updateData['completed_by'] = auth()->id();
         }
         
         $order->update($updateData);
