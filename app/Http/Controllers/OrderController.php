@@ -484,6 +484,11 @@ class OrderController extends Controller
             $updateData['delivery_photo'] = $deliveryPhotoPath;
         }
         
+        // Track who completed the order
+        if ($request->status === 'completed') {
+            $updateData['completed_by'] = $user->id;
+        }
+        
         // Handle cancellation data
         if ($request->status === 'cancelled') {
             $updateData['cancellation_reason'] = $request->cancellation_reason;

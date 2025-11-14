@@ -21,6 +21,7 @@ class Order extends Model
         'delivery_date',
         'delivery_mode',
         'delivery_rider_id',
+        'completed_by',
         'delivery_photo',
         'cancellation_reason',
         'cancelled_at',
@@ -42,6 +43,14 @@ class Order extends Model
     public function deliveryRider()
     {
         return $this->belongsTo(User::class, 'delivery_rider_id');
+    }
+
+    /**
+     * Get the user who completed this order
+     */
+    public function completedBy()
+    {
+        return $this->belongsTo(User::class, 'completed_by');
     }
 
     /**

@@ -408,18 +408,30 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('employee/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('employee.settings.profile')->middleware('check.employee');
     
-    // Employee Product Monitoring - Shows pending pickup orders
+    // Employee Product Monitoring - Shows pickup orders (pending and recent completed)
     Route::get('employee/product-monitoring', function () {
         $user = Auth::user();
         
-        // Get all pending pickup orders
+        // Get pending pickup orders
         $pendingPickupOrders = \App\Models\Order::where('status', 'pending')
             ->where('delivery_mode', 'pick_up')
-            ->with(['deliveryRider:id,name'])
+            ->with(['deliveryRider:id,name', 'completedBy:id,name'])
             ->orderBy('created_at', 'asc')
-            ->get(['order_id', 'customer_name', 'contact_number', 'size', 'quantity', 'total', 'created_at', 'delivery_rider_id', 'address']);
+            ->get(['order_id', 'customer_name', 'contact_number', 'size', 'quantity', 'total', 'created_at', 'delivery_rider_id', 'completed_by', 'address', 'status']);
         
-        // Calculate stats
+        // Get recent completed pickup orders (last 24 hours) for reference
+        $recentCompletedOrders = \App\Models\Order::where('status', 'completed')
+            ->where('delivery_mode', 'pick_up')
+            ->where('updated_at', '>=', \Carbon\Carbon::now()->subDay())
+            ->with(['deliveryRider:id,name', 'completedBy:id,name'])
+            ->orderBy('updated_at', 'desc')
+            ->take(10)
+            ->get(['order_id', 'customer_name', 'contact_number', 'size', 'quantity', 'total', 'created_at', 'delivery_rider_id', 'completed_by', 'address', 'status']);
+        
+        // Combine pending and recent completed orders
+        $allOrders = $pendingPickupOrders->merge($recentCompletedOrders)->sortBy('created_at');
+        
+        // Calculate stats (only for pending orders)
         $totalPickupOrders = $pendingPickupOrders->count();
         $totalQuantity = $pendingPickupOrders->sum('quantity');
         $totalValue = $pendingPickupOrders->sum('total');
@@ -432,7 +444,7 @@ Route::middleware(['auth'])->group(function () {
         
         return Inertia::render('employee/product-monitoring', [
             'user' => $user,
-            'pendingOrders' => $pendingPickupOrders,
+            'pendingOrders' => $allOrders->values(), // Reset array keys
             'stats' => [
                 'total_pending' => $totalPickupOrders,
                 'total_quantity' => $totalQuantity,
