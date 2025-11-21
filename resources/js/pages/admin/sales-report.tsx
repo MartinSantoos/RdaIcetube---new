@@ -611,24 +611,46 @@ export default function SalesReport({ user, orders }: SalesReportProps) {
                         {/* Date Range */}
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <Label htmlFor="start-date" className="text-sm font-medium">Start Date</Label>
-                                <Input
-                                    id="start-date"
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="mt-1"
-                                />
+                                <Label htmlFor="start-date" className="text-sm font-medium mb-2 block">Start Date</Label>
+                                <div className="relative">
+                                    <Input
+                                        id="start-date"
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        onClick={(e) => {
+                                            try {
+                                                (e.target as HTMLInputElement).showPicker();
+                                            } catch (error) {
+                                                // Fallback for browsers that don't support showPicker
+                                                console.log('showPicker not supported');
+                                            }
+                                        }}
+                                        className="w-full pr-10"
+                                    />
+                                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                </div>
                             </div>
                             <div>
-                                <Label htmlFor="end-date" className="text-sm font-medium">End Date</Label>
-                                <Input
-                                    id="end-date"
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="mt-1"
-                                />
+                                <Label htmlFor="end-date" className="text-sm font-medium mb-2 block">End Date</Label>
+                                <div className="relative">
+                                    <Input
+                                        id="end-date"
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        onClick={(e) => {
+                                            try {
+                                                (e.target as HTMLInputElement).showPicker();
+                                            } catch (error) {
+                                                // Fallback for browsers that don't support showPicker
+                                                console.log('showPicker not supported');
+                                            }
+                                        }}
+                                        className="w-full pr-10"
+                                    />
+                                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                </div>
                             </div>
                         </div>
 

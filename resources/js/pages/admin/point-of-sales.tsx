@@ -548,14 +548,13 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
     };
 
     // Check if user can complete a delivery order
-    const canCompleteDeliveryOrder = (order: Order) => {
+    const canCompleteDeliveryOrder = (order: Order): boolean => {
         // For pickup orders, any admin or employee can complete them
         if (order.delivery_mode === 'pick_up') {
             return true;
         }
         
         // For delivery orders, only the assigned delivery rider can complete it
-        // Admin (user_type 0 or 1) cannot complete delivery orders
         if (user.user_type === 0 || user.user_type === 1) {
             return false;
         }
@@ -2218,21 +2217,21 @@ export default function Order({ user, orders, archivedOrders = [], deliveryRider
                                         <p className="font-semibold text-sm">{formatDate(selectedOrder.order_date)}</p>
                                     </div>
                                     <div>
-                                        <span className="text-xs text-gray-500">Delivery Date</span>
+                                        <span className="text-xs text-gray-500">Delivery Date/Pick-up Date</span>
                                         <p className="font-semibold text-sm">{selectedOrder.delivery_date ? formatDate(selectedOrder.delivery_date) : 'N/A'}</p>
                                     </div>
                                     <div>
                                         <span className="text-xs text-gray-500">Total</span>
                                         <p className="font-semibold text-base">₱{selectedOrder.total ? parseFloat(selectedOrder.total.toString()).toFixed(2) : '0.00'}</p>
                                     </div>
-                                    {/* Show completed by info for completed orders */}
-                                    {selectedOrder.status === 'completed' && (
+                                    {/* Show completed by info for completed pickup orders only */}
+                                    {selectedOrder.status === 'completed' && selectedOrder.delivery_mode === 'pick_up' && (
                                         <div>
                                             <span className="text-xs text-gray-500">Completed By</span>
                                             <p className="font-semibold text-sm">
                                                 {selectedOrder.completed_by || 'Unknown'}
                                             </p>
-                                        </div>
+                                        </div>  
                                     )}
                                     {/* Show delivery employee info for delivery orders */}
                                     {selectedOrder.delivery_mode === 'deliver' && (selectedOrder.deliveryRider || selectedOrder.delivery_rider) && (

@@ -1327,100 +1327,6 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                 )}
                             </div>
                             
-                            {/* Recurring Schedule (Only for Preventive Maintenance) */}
-                            {maintenanceData.maintenance_type === 'preventive' && (
-                                <>
-                                    <div>
-                                        <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
-                                            <input
-                                                type="checkbox"
-                                                checked={maintenanceData.is_recurring}
-                                                onChange={(e) => setMaintenanceData('is_recurring', e.target.checked)}
-                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            />
-                                            <span>Set up recurring maintenance schedule</span>
-                                        </label>
-                                    </div>
-                                    
-                                    {maintenanceData.is_recurring && (
-                                        <div className="bg-blue-50 p-4 rounded-md space-y-4">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                        Frequency
-                                                    </label>
-                                                    <select
-                                                        value={maintenanceData.recurring_frequency}
-                                                        onChange={(e) => setMaintenanceData('recurring_frequency', e.target.value)}
-                                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                        style={{ 
-                                                            color: '#111827', 
-                                                            backgroundColor: 'white',
-                                                            fontSize: '0.875rem'
-                                                        }}
-                                                    >
-                                                        <option value="daily" style={{ color: '#111827', backgroundColor: 'white' }}>Daily</option>
-                                                        <option value="weekly" style={{ color: '#111827', backgroundColor: 'white' }}>Weekly</option>
-                                                        <option value="monthly" style={{ color: '#111827', backgroundColor: 'white' }}>Monthly</option>
-                                                        <option value="quarterly" style={{ color: '#111827', backgroundColor: 'white' }}>Quarterly</option>
-                                                        <option value="yearly" style={{ color: '#111827', backgroundColor: 'white' }}>Yearly</option>
-                                                    </select>
-                                                </div>
-                                                
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                        Every
-                                                    </label>
-                                                    <div className="flex items-center space-x-2">
-                                                        <input
-                                                            type="number"
-                                                            min="1"
-                                                            max="12"
-                                                            value={maintenanceData.recurring_interval}
-                                                            onChange={(e) => setMaintenanceData('recurring_interval', e.target.value)}
-                                                            className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                            style={{ 
-                                                                color: '#111827', 
-                                                                backgroundColor: 'white',
-                                                                fontSize: '0.875rem'
-                                                            }}
-                                                        />
-                                                        <span className="text-sm text-gray-600">
-                                                            {maintenanceData.recurring_frequency === 'daily' ? 'day(s)' :
-                                                             maintenanceData.recurring_frequency === 'weekly' ? 'week(s)' :
-                                                             maintenanceData.recurring_frequency === 'monthly' ? 'month(s)' :
-                                                             maintenanceData.recurring_frequency === 'quarterly' ? 'quarter(s)' :
-                                                             'year(s)'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    End Date (Optional)
-                                                </label>
-                                                <input
-                                                    type="date"
-                                                    value={maintenanceData.recurring_end_date}
-                                                    onChange={(e) => setMaintenanceData('recurring_end_date', e.target.value)}
-                                                    min={maintenanceData.maintenance_date || getTodayDate()}
-                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                    style={{ 
-                                                        color: '#111827', 
-                                                        backgroundColor: 'white',
-                                                        fontSize: '0.875rem'
-                                                    }}
-                                                />
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                    Leave empty for ongoing recurring schedule
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                            
                             {/* Description */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1495,6 +1401,98 @@ export default function Equipment({ user, equipment = [] }: EquipmentProps) {
                                     )}
                                 </div>
                             </div>
+                            
+                            {/* Recurring Schedule (Only for Preventive Maintenance) */}
+                            {maintenanceData.maintenance_type === 'preventive' && (
+                                <>
+                                    <div>
+                                        <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
+                                            <input
+                                                type="checkbox"
+                                                checked={maintenanceData.is_recurring}
+                                                onChange={(e) => setMaintenanceData('is_recurring', e.target.checked)}
+                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            />
+                                            <span>Set up recurring maintenance schedule</span>
+                                        </label>
+                                    </div>
+                                    
+                                    {maintenanceData.is_recurring && (
+                                        <div className="bg-blue-50 p-4 rounded-md space-y-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                        Frequency
+                                                    </label>
+                                                    <select
+                                                        value={maintenanceData.recurring_frequency}
+                                                        onChange={(e) => setMaintenanceData('recurring_frequency', e.target.value)}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        style={{ 
+                                                            color: '#111827', 
+                                                            backgroundColor: 'white',
+                                                            fontSize: '0.875rem'
+                                                        }}
+                                                    >
+                                                        <option value="daily" style={{ color: '#111827', backgroundColor: 'white' }}>Daily</option>
+                                                        <option value="weekly" style={{ color: '#111827', backgroundColor: 'white' }}>Weekly</option>
+                                                        <option value="monthly" style={{ color: '#111827', backgroundColor: 'white' }}>Monthly</option>
+                                                        <option value="yearly" style={{ color: '#111827', backgroundColor: 'white' }}>Yearly</option>
+                                                    </select>
+                                                </div>
+                                                
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                        Every
+                                                    </label>
+                                                    <div className="flex items-center space-x-2">
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            max="12"
+                                                            value={maintenanceData.recurring_interval}
+                                                            onChange={(e) => setMaintenanceData('recurring_interval', e.target.value)}
+                                                            className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                            style={{ 
+                                                                color: '#111827', 
+                                                                backgroundColor: 'white',
+                                                                fontSize: '0.875rem'
+                                                            }}
+                                                        />
+                                                        <span className="text-sm text-gray-600">
+                                                            {maintenanceData.recurring_frequency === 'daily' ? 'day(s)' :
+                                                             maintenanceData.recurring_frequency === 'weekly' ? 'week(s)' :
+                                                             maintenanceData.recurring_frequency === 'monthly' ? 'month(s)' :
+                                                             'year(s)'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    End Date (Optional)
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={maintenanceData.recurring_end_date}
+                                                    onChange={(e) => setMaintenanceData('recurring_end_date', e.target.value)}
+                                                    min={maintenanceData.maintenance_date || getTodayDate()}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    style={{ 
+                                                        color: '#111827', 
+                                                        backgroundColor: 'white',
+                                                        fontSize: '0.875rem'
+                                                    }}
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Leave empty for ongoing recurring schedule
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         
                         <div className="flex flex-col sm:flex-row justify-end gap-2 sm:space-x-3 pt-4">
                                 <button

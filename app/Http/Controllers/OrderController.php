@@ -16,8 +16,10 @@ class OrderController extends Controller
      */
     public function store(Request $request)
     {
-        // Get available sizes from inventory
-        $availableSizes = \App\Models\Inventory::whereNull('archived_at')->pluck('size')->unique()->toArray();
+        // Get available sizes from inventory (including critical stock)
+        $availableSizes = \App\Models\Inventory::whereNull('archived_at')
+            ->whereIn('status', ['available', 'critical'])
+            ->pluck('size')->unique()->toArray();
         
         $request->validate([
             'customer_name' => 'required|string|max:255',
@@ -31,9 +33,9 @@ class OrderController extends Controller
             'delivery_rider_id' => 'nullable|exists:users,id',
         ]);
 
-        // Get price from inventory and check availability
+        // Get price from inventory and check availability (including critical stock)
         $inventory = Inventory::where('size', $request->size)
-            ->where('status', 'available')
+            ->whereIn('status', ['available', 'critical'])
             ->whereNull('archived_at')
             ->first();
             

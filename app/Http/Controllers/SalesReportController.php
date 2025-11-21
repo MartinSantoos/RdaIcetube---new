@@ -156,7 +156,7 @@ class SalesReportController extends Controller
                 $order->customer_name,
                 $order->size,
                 $order->quantity,
-                '₱' . number_format($order->total, 2),
+                'PHP ' . number_format($order->total, 2),
                 date('Y-m-d', strtotime($order->order_date))
             ];
         }

@@ -13,6 +13,10 @@ class Equipment extends Model
         'equipment_type',
         'status',
         'broken_reason',
+        'recurring_maintenance',
+        'maintenance_type',
+        'maintenance_frequency_minutes',
+        'maintenance_end_date',
     ];
 
     public function maintenances()

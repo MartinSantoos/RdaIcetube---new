@@ -38,9 +38,9 @@
             <td>{{ $order->size }}</td>
             <td>{{ $order->quantity }}</td>
             <td class="debug">{{ $order->price ?? 'NULL' }}</td>
-            <td>₱{{ $order->price ? number_format((float)$order->price, 2) : '0.00' }}</td>
+            <td>PHP{{ $order->price ? number_format((float)$order->price, 2) : '0.00' }}</td>
             <td class="debug">{{ $order->total ?? 'NULL' }}</td>
-            <td>₱{{ $order->total ? number_format((float)$order->total, 2) : '0.00' }}</td>
+            <td>PHP{{ $order->total ? number_format((float)$order->total, 2) : '0.00' }}</td>
         </tr>
         @endforeach
     </table>

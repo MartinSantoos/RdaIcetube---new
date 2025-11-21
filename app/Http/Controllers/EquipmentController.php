@@ -71,6 +71,10 @@ class EquipmentController extends Controller
             'description' => 'nullable|string',
             'maintenance_date' => 'required|date',
             'cost' => 'nullable|numeric|min:0',
+            'recurring' => 'nullable|boolean',
+            'frequency_value' => 'nullable|integer|min:1',
+            'frequency_unit' => 'nullable|in:minutes,hours,days,weeks,months',
+            'end_date' => 'nullable|date|after:maintenance_date',
         ]);
 
         $equipment = Equipment::findOrFail($request->equipment_id);
@@ -88,6 +92,17 @@ class EquipmentController extends Controller
         ]);
 
         $equipment->update(['status' => 'under_maintenance']);
+
+        // Handle recurring maintenance setup
+        if ($request->recurring) {
+            $frequencyMinutes = $this->convertToMinutes($request->frequency_value, $request->frequency_unit);
+            $equipment->update([
+                'recurring_maintenance' => true,
+                'maintenance_type' => $request->maintenance_type,
+                'maintenance_frequency_minutes' => $frequencyMinutes,
+                'maintenance_end_date' => $request->end_date,
+            ]);
+        }
 
         // Log the activity
         if (auth()->check() && auth()->user() && is_numeric(auth()->user()->id)) {
@@ -335,5 +350,26 @@ class EquipmentController extends Controller
 
         $filename = 'maintenance-report-' . date('Y-m-d') . '.pdf';
         return $pdf->download($filename);
+    }
+
+    /**
+     * Convert frequency to minutes for recurring maintenance
+     */
+    private function convertToMinutes($value, $unit)
+    {
+        switch ($unit) {
+            case 'minutes':
+                return $value;
+            case 'hours':
+                return $value * 60;
+            case 'days':
+                return $value * 60 * 24;
+            case 'weeks':
+                return $value * 60 * 24 * 7;
+            case 'months':
+                return $value * 60 * 24 * 30; // Approximate
+            default:
+                return $value; // Default to minutes
+        }
     }
 }
